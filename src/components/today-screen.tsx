@@ -44,6 +44,7 @@ type InstallPrompt = Event & {
 };
 type ActiveView = "today" | "calendar" | "map" | "archive" | "settings";
 type CurrentLocation = { latitude: number; longitude: number; accuracyMeters?: number };
+type SpotifyPlaylist = { id: string; name: string; public: boolean | null; collaborative: boolean; imageUrl: string | null; total: number };
 
 async function preparePhoto(file: File) {
   const bitmap = await createImageBitmap(file);
@@ -209,6 +210,12 @@ function DiaryHome({ session, onInstall, installed }: {
   const [recaps, setRecaps] = useState<Recap[]>([]);
   const [confirmFinalize, setConfirmFinalize] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [playlistOpen, setPlaylistOpen] = useState(false);
+  const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
+  const [playlistBusy, setPlaylistBusy] = useState(false);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
+  const [playlistsLoaded, setPlaylistsLoaded] = useState(false);
+  const [playlistNeedsReconnect, setPlaylistNeedsReconnect] = useState(false);
   const pollTimer = useRef<number | null>(null);
   const progressTimer = useRef<number | null>(null);
 
@@ -387,6 +394,77 @@ function DiaryHome({ session, onInstall, installed }: {
     }
   }
 
+  async function saveRecapImage(variant: "artwork" | "recap" = "recap") {
+    if (!recap) return;
+    setToast("공유 이미지를 만들고 있어요…");
+    const response = await fetch(`/api/daily-albums/${recap.id}/poster?variant=${variant}`);
+    if (!response.ok) {
+      setToast("이미지를 만들지 못했어요.");
+      return;
+    }
+    const blob = await response.blob();
+    const file = new File([blob], `daytrack-${variant}-${recap.date}.png`, { type: "image/png" });
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: recap.title });
+        setToast("");
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = file.name;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    setToast("이미지를 저장했어요.");
+  }
+
+  async function openPlaylistPicker() {
+    if (!recap) return;
+    setPlaylistOpen(true);
+    setPlaylistBusy(true);
+    setPlaylistNeedsReconnect(false);
+    const response = await fetch("/api/spotify/playlists", { cache: "no-store" });
+    const payload = await response.json();
+    setPlaylistBusy(false);
+    if (response.status === 403 && payload.error === "RECONNECT_REQUIRED") {
+      setPlaylistNeedsReconnect(true);
+      return;
+    }
+    if (!response.ok) {
+      setToast(payload.error || "플레이리스트를 불러오지 못했어요.");
+      return;
+    }
+    setPlaylists(payload.playlists);
+    setPlaylistsLoaded(true);
+  }
+
+  async function saveToSpotify() {
+    if (!recap || playlistBusy) return;
+    setPlaylistBusy(true);
+    const response = await fetch(`/api/daily-albums/${recap.id}/playlist`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(selectedPlaylistId ? { playlistId: selectedPlaylistId } : {}),
+    });
+    const payload = await response.json();
+    setPlaylistBusy(false);
+    if (response.status === 403 && payload.error === "RECONNECT_REQUIRED") {
+      setPlaylistNeedsReconnect(true);
+      return;
+    }
+    if (!response.ok) {
+      setToast(payload.error || "Spotify에 저장하지 못했어요.");
+      return;
+    }
+    setPlaylistOpen(false);
+    setToast(`${payload.added}곡을 Spotify에 저장했어요.`);
+    if (payload.playlistUrl) window.open(payload.playlistUrl, "_blank", "noopener,noreferrer");
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -494,7 +572,39 @@ function DiaryHome({ session, onInstall, installed }: {
           </section>
         </div>
       ) : null}
-      {recap ? <div className="recap-backdrop" role="dialog" aria-modal="true" aria-label="오늘의 정산 카드"><RecapCard recap={recap} onClose={() => setRecap(null)} onShare={shareRecap} /></div> : null}
+      {recap ? <div className="recap-backdrop" role="dialog" aria-modal="true" aria-label="오늘의 정산 카드"><RecapCard recap={recap} onClose={() => setRecap(null)} onShare={shareRecap} onSaveImage={() => saveRecapImage()} onSaveArtwork={() => saveRecapImage("artwork")} onPlaylist={openPlaylistPicker} /></div> : null}
+      {playlistOpen ? (
+        <div className="confirm-backdrop playlist-backdrop" role="dialog" aria-modal="true" aria-labelledby="playlist-title">
+          <section className="playlist-sheet">
+            <div className="playlist-sheet-head"><div><p>오늘 들은 음악을 그대로</p><h2 id="playlist-title">Spotify에 저장</h2></div><button onClick={() => setPlaylistOpen(false)} aria-label="닫기"><X /></button></div>
+            {playlistBusy && !playlists.length ? <div className="playlist-loading"><LoaderCircle className="spin-icon" />플레이리스트를 불러오는 중…</div> : null}
+            {!playlistBusy && playlistNeedsReconnect ? (
+              <div className="spotify-reconnect">
+                <Music2 /><strong>Spotify 권한을 한 번 갱신해 주세요</strong>
+                <p>플레이리스트 생성과 기존 목록 추가 권한이 새로 필요합니다.</p>
+                <a href="/api/auth/spotify">Spotify 다시 연결</a>
+              </div>
+            ) : null}
+            {!playlistNeedsReconnect && playlistsLoaded ? (
+              <>
+                <button className={`playlist-choice new-playlist-choice ${selectedPlaylistId === "" ? "selected" : ""}`} onClick={() => setSelectedPlaylistId("")}>
+                  <span><Music2 /></span><div><strong>새 플레이리스트 만들기</strong><small>DAYTRACK · {recap?.date}</small></div><Check />
+                </button>
+                <div className="playlist-options">
+                  {playlists.map((item) => (
+                    <button className={`playlist-choice ${selectedPlaylistId === item.id ? "selected" : ""}`} key={item.id} onClick={() => setSelectedPlaylistId(item.id)}>
+                      <span>{item.imageUrl ? <Image src={item.imageUrl} alt="" fill sizes="48px" /> : <Music2 />}</span>
+                      <div><strong>{item.name}</strong><small>{item.total}곡 · {item.public ? "공개" : "비공개"}</small></div>
+                      {selectedPlaylistId === item.id ? <Check /> : null}
+                    </button>
+                  ))}
+                </div>
+                <button className="playlist-save" onClick={saveToSpotify} disabled={playlistBusy}>{playlistBusy ? <><LoaderCircle className="spin-icon" />저장 중…</> : selectedPlaylistId ? "이 플레이리스트에 추가" : "새 플레이리스트 만들기"}</button>
+              </>
+            ) : null}
+          </section>
+        </div>
+      ) : null}
       {toast ? <div className="toast" role="status">{toast}</div> : null}
     </main>
   );

@@ -1,7 +1,8 @@
 "use client";
 
-import { Clock3, Disc3, MapPin, Music2, Share2, X } from "lucide-react";
+import { Clock3, Disc3, ImageDown, ListMusic, MapPin, Music2, Repeat2, Share2, Sparkles, X } from "lucide-react";
 import Image from "next/image";
+import { useMemo } from "react";
 import { DayMap } from "@/components/day-map";
 
 export type Recap = {
@@ -15,7 +16,10 @@ export type Recap = {
     id: string;
     title: string;
     artist: string;
+    albumTitle: string;
     coverUrl: string | null;
+    spotifyUrl: string;
+    uri: string;
     occurredAt: string;
     caption: string | null;
     isMoment: boolean;
@@ -30,14 +34,38 @@ export type Recap = {
   }>;
 };
 
-export function RecapCard({ recap, publicToken, onClose, onShare }: {
+export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, onSaveArtwork, onPlaylist }: {
   recap: Recap;
   publicToken?: string;
   onClose?: () => void;
   onShare?: () => void;
+  onSaveImage?: () => void;
+  onSaveArtwork?: () => void;
+  onPlaylist?: () => void;
 }) {
-  const located = recap.items.filter((item) => item.location);
+  const located = useMemo(() => recap.items.filter((item) => item.location), [recap.items]);
   const photo = recap.items.find((item) => item.photoAssetId);
+  const story = useMemo(() => {
+    const counts = new Map<string, number>();
+    recap.items.forEach((item) => counts.set(item.title, (counts.get(item.title) ?? 0) + 1));
+    const repeated = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+    const hours = recap.items.map((item) => new Date(item.occurredAt).getHours());
+    const average = hours.length ? hours.reduce((sum, hour) => sum + hour, 0) / hours.length : 12;
+    const character = average >= 20 ? "밤의 산책자" : average >= 16 ? "해질녘 수집가" : average >= 12 ? "오후의 탐험가" : "아침의 선곡가";
+    const first = recap.items.at(0);
+    const last = recap.items.at(-1);
+    return { repeated, character, first, last };
+  }, [recap.items]);
+  const albums = useMemo(() => {
+    const grouped = new Map<string, { title: string; coverUrl: string | null; count: number; spotifyUrl: string }>();
+    recap.items.forEach((item) => {
+      const key = `${item.albumTitle}:${item.coverUrl ?? ""}`;
+      const current = grouped.get(key);
+      if (current) current.count += 1;
+      else grouped.set(key, { title: item.albumTitle, coverUrl: item.coverUrl, count: 1, spotifyUrl: item.spotifyUrl });
+    });
+    return [...grouped.values()].sort((a, b) => b.count - a.count).slice(0, 12);
+  }, [recap.items]);
   const dateLabel = new Intl.DateTimeFormat("ko-KR", {
     month: "long", day: "numeric", weekday: "long", timeZone: "UTC",
   }).format(new Date(`${recap.date}T12:00:00Z`));
@@ -74,6 +102,32 @@ export function RecapCard({ recap, publicToken, onClose, onShare }: {
           <div><Clock3 /><b>{recap.stats.durationMinutes}</b><span>분</span></div>
         </div>
       </section>
+      <section className="recap-story">
+        <div><Sparkles /><span>오늘의 캐릭터</span><strong>{story.character}</strong></div>
+        <div><Repeat2 /><span>{story.repeated?.[1] && story.repeated[1] > 1 ? "오늘의 반복곡" : "오늘의 대표곡"}</span><strong>{story.repeated?.[0] || "첫 번째 음악"}</strong></div>
+        <div><Clock3 /><span>음악이 흐른 시간</span><strong>{story.first && story.last ? `${new Date(story.first.occurredAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} — ${new Date(story.last.occurredAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "오늘"}</strong></div>
+      </section>
+      <section className="album-mosaic-section">
+        <div className="album-mosaic-head"><div><span>LISTENING FREQUENCY</span><h2>오늘의 앨범 모자이크</h2></div>{onSaveArtwork ? <button onClick={onSaveArtwork}><ImageDown />작품 저장</button> : null}</div>
+        <div className="album-mosaic" style={{ "--album-count": albums.length } as React.CSSProperties}>
+          {albums.map((album, index) => (
+            <a
+              className={`album-tile ${index === 0 ? "album-tile-hero" : album.count >= 2 ? "album-tile-medium" : ""}`}
+              href={album.spotifyUrl}
+              target="_blank"
+              rel="noreferrer"
+              key={`${album.title}-${index}`}
+              aria-label={`${album.title}, ${album.count}회 재생, Spotify에서 열기`}
+            >
+              {album.coverUrl ? <Image src={album.coverUrl} alt={`${album.title} 앨범 커버`} fill sizes="(max-width: 620px) 45vw, 220px" /> : <span><Disc3 /></span>}
+            </a>
+          ))}
+        </div>
+        <div className="album-mosaic-legend">
+          {albums.slice(0, 4).map((album) => <span key={album.title}><b>{album.count}×</b>{album.title}</span>)}
+        </div>
+        <p>많이 들은 앨범일수록 더 큰 면적을 차지해요. 커버를 누르면 Spotify에서 열립니다.</p>
+      </section>
       <section className="recap-timeline">
         {recap.items.map((item, index) => (
           <div className="recap-row" key={item.id}>
@@ -84,7 +138,11 @@ export function RecapCard({ recap, publicToken, onClose, onShare }: {
           </div>
         ))}
       </section>
-      {onShare ? <div className="recap-actions"><button onClick={onShare}><Share2 />공유하기</button></div> : null}
+      {onShare || onSaveImage || onPlaylist ? <div className="recap-actions">
+        {onSaveImage ? <button onClick={onSaveImage}><ImageDown /><span>이미지</span></button> : null}
+        {onPlaylist ? <button onClick={onPlaylist}><ListMusic /><span>Spotify</span></button> : null}
+        {onShare ? <button onClick={onShare}><Share2 /><span>공유</span></button> : null}
+      </div> : null}
       <footer className="recap-brand">DAYTRACK · 나의 하루를 음악으로</footer>
     </article>
   );
