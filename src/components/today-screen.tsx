@@ -194,6 +194,8 @@ function DiaryHome({ session, onInstall, installed }: {
   installed: boolean;
 }) {
   const [activeView, setActiveView] = useState<ActiveView>("today");
+  const [studioStatus, setStudioStatus] = useState({ busy: false, progress: 0 });
+  const handleStudioBusy = useCallback((busy: boolean, progress: number) => setStudioStatus({ busy, progress }), []);
   const [composerOpen, setComposerOpen] = useState(false);
   const [note, setNote] = useState("");
   const [mood, setMood] = useState("평온");
@@ -497,9 +499,16 @@ function DiaryHome({ session, onInstall, installed }: {
       ) : null}
       {activeView === "calendar" ? <CalendarView moments={moments} /> : null}
       {activeView === "archive" ? <ArchiveView recaps={recaps} onOpen={setRecap} /> : null}
-      {activeView === "studio" ? <MosaicStudio recap={recaps[0] ?? null} /> : null}
+      <div hidden={activeView !== "studio"}><MosaicStudio recap={recaps[0] ?? null} onBusyChange={handleStudioBusy} /></div>
       {activeView === "settings" ? <SettingsView session={session} installed={installed} onInstall={onInstall} /> : null}
-      <BottomNav activeView={activeView} onChange={setActiveView} onRecord={() => setComposerOpen(true)} />
+      {studioStatus.busy && activeView !== "studio" ? <button className="studio-global-progress" onClick={() => setActiveView("studio")}><LoaderCircle className="spin-icon" /><span><b>모자이크 생성 중 · {studioStatus.progress}%</b><small>눌러서 진행 화면으로 돌아가기</small></span></button> : null}
+      <BottomNav activeView={activeView} busy={studioStatus.busy} onChange={(view) => {
+        if (studioStatus.busy && view !== "studio") { setToast("모자이크가 완성될 때까지 Studio 화면을 유지해 주세요."); return; }
+        setActiveView(view);
+      }} onRecord={() => {
+        if (studioStatus.busy) { setToast("모자이크가 완성된 뒤 기록을 추가할 수 있어요."); return; }
+        setComposerOpen(true);
+      }} />
       {composerOpen ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="composer-title">
           <section className="composer">
@@ -752,7 +761,8 @@ function SettingsView({ session, installed, onInstall }: { session: SessionState
   return <section className="utility-screen"><div className="view-heading"><div><p>{session.user?.displayName}</p><h1 className="serif">설정</h1></div><Settings /></div><div className="settings-list"><div><LocateFixed /><span><strong>위치 저장</strong><small>기록할 때마다 선택</small></span><b>수동</b></div><div><Music2 /><span><strong>Spotify 동기화</strong><small>재생 중 8초마다 확인</small></span><b>연결됨</b></div><button onClick={onInstall}><Smartphone /><span><strong>홈 화면 앱</strong><small>{installed ? "설치됨" : "앱처럼 빠르게 실행"}</small></span><b>{installed ? <Check /> : "추가"}</b></button></div></section>;
 }
 
-function BottomNav({ activeView, onChange, onRecord }: { activeView: ActiveView; onChange: (view: ActiveView) => void; onRecord: () => void }) {
-  if (activeView === "studio" || activeView === "today" || activeView === "calendar" || activeView === "map" || activeView === "archive" || activeView === "settings") return <nav className="bottom-nav" aria-label="주요 메뉴"><button className={`nav-item ${activeView === "today" ? "active" : ""}`} onClick={() => onChange("today")}><Disc3 size={19} />오늘</button><button className={`nav-item ${activeView === "calendar" ? "active" : ""}`} onClick={() => onChange("calendar")}><CalendarDays size={19} />달력</button><button className="nav-item" onClick={onRecord} aria-label="새 기록"><span className="record-circle" />기록</button><button className={`nav-item ${activeView === "map" ? "active" : ""}`} onClick={() => onChange("map")}><MapIcon size={19} />지도</button><button className={`nav-item ${activeView === "studio" ? "active" : ""}`} onClick={() => onChange("studio")}><Grid3X3 size={19} />Studio<sup>β</sup></button><button className={`nav-item ${activeView === "archive" ? "active" : ""}`} onClick={() => onChange("archive")}><Library size={19} />보관함</button></nav>;
+function studioStatusLabel(_busy: boolean) { return "생성 중"; }
+function BottomNav({ activeView, busy, onChange, onRecord }: { activeView: ActiveView; busy: boolean; onChange: (view: ActiveView) => void; onRecord: () => void }) {
+  if (activeView === "studio" || activeView === "today" || activeView === "calendar" || activeView === "map" || activeView === "archive" || activeView === "settings") return <nav className={`bottom-nav ${busy ? "studio-busy" : ""}`} aria-label="주요 메뉴"><button disabled={busy} className={`nav-item ${activeView === "today" ? "active" : ""}`} onClick={() => onChange("today")}><Disc3 size={19} />오늘</button><button disabled={busy} className={`nav-item ${activeView === "calendar" ? "active" : ""}`} onClick={() => onChange("calendar")}><CalendarDays size={19} />달력</button><button disabled={busy} className="nav-item" onClick={onRecord} aria-label="새 기록"><span className="record-circle" />기록</button><button disabled={busy} className={`nav-item ${activeView === "map" ? "active" : ""}`} onClick={() => onChange("map")}><MapIcon size={19} />지도</button><button className={`nav-item ${activeView === "studio" ? "active" : ""}`} onClick={() => onChange("studio")}><Grid3X3 size={19} />{busy ? `${studioStatusLabel(busy)}` : "Studio"}<sup>β</sup></button><button disabled={busy} className={`nav-item ${activeView === "archive" ? "active" : ""}`} onClick={() => onChange("archive")}><Library size={19} />보관함</button></nav>;
   return <nav className="bottom-nav" aria-label="주요 메뉴"><button className={`nav-item ${activeView === "today" ? "active" : ""}`} onClick={() => onChange("today")}><Disc3 size={19} />오늘</button><button className={`nav-item ${activeView === "calendar" ? "active" : ""}`} onClick={() => onChange("calendar")}><CalendarDays size={19} />달력</button><button className="nav-item" onClick={onRecord} aria-label="새 기록"><span className="record-circle" />기록</button><button className={`nav-item ${activeView === "map" ? "active" : ""}`} onClick={() => onChange("map")}><MapIcon size={19} />지도</button><button className={`nav-item ${activeView === "archive" ? "active" : ""}`} onClick={() => onChange("archive")}><Library size={19} />보관함</button></nav>;
 }
