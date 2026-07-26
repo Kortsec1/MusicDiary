@@ -2,7 +2,7 @@
 /* eslint-disable react-hooks/set-state-in-effect -- Initial client-only session and device state are synchronized after hydration. */
 
 import {
-  Archive, BookOpen, CalendarDays, Camera, Check, ChevronRight, Disc3, Download, Library,
+  Archive, BookOpen, CalendarDays, Camera, Check, ChevronRight, Disc3, Download, Grid3X3, Library,
   LoaderCircle, LocateFixed, Map as MapIcon, Menu, Music2, Navigation, Settings,
   Smartphone, UserRound, X,
 } from "lucide-react";
@@ -10,6 +10,7 @@ import Image from "next/image";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DayMap, type MapMoment } from "@/components/day-map";
 import { RecapCard, type Recap } from "@/components/recap-card";
+import { MosaicStudio } from "@/components/mosaic-studio";
 
 type SessionState = {
   connected: boolean;
@@ -42,7 +43,7 @@ type InstallPrompt = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
-type ActiveView = "today" | "calendar" | "map" | "archive" | "settings";
+type ActiveView = "today" | "calendar" | "map" | "studio" | "archive" | "settings";
 type CurrentLocation = { latitude: number; longitude: number; accuracyMeters?: number };
 type SpotifyPlaylist = { id: string; name: string; public: boolean | null; collaborative: boolean; imageUrl: string | null; total: number };
 
@@ -496,6 +497,7 @@ function DiaryHome({ session, onInstall, installed }: {
       ) : null}
       {activeView === "calendar" ? <CalendarView moments={moments} /> : null}
       {activeView === "archive" ? <ArchiveView recaps={recaps} onOpen={setRecap} /> : null}
+      {activeView === "studio" ? <MosaicStudio recap={recaps[0] ?? null} /> : null}
       {activeView === "settings" ? <SettingsView session={session} installed={installed} onInstall={onInstall} /> : null}
       <BottomNav activeView={activeView} onChange={setActiveView} onRecord={() => setComposerOpen(true)} />
       {composerOpen ? (
@@ -751,5 +753,6 @@ function SettingsView({ session, installed, onInstall }: { session: SessionState
 }
 
 function BottomNav({ activeView, onChange, onRecord }: { activeView: ActiveView; onChange: (view: ActiveView) => void; onRecord: () => void }) {
+  if (activeView === "studio" || activeView === "today" || activeView === "calendar" || activeView === "map" || activeView === "archive" || activeView === "settings") return <nav className="bottom-nav" aria-label="주요 메뉴"><button className={`nav-item ${activeView === "today" ? "active" : ""}`} onClick={() => onChange("today")}><Disc3 size={19} />오늘</button><button className={`nav-item ${activeView === "calendar" ? "active" : ""}`} onClick={() => onChange("calendar")}><CalendarDays size={19} />달력</button><button className="nav-item" onClick={onRecord} aria-label="새 기록"><span className="record-circle" />기록</button><button className={`nav-item ${activeView === "map" ? "active" : ""}`} onClick={() => onChange("map")}><MapIcon size={19} />지도</button><button className={`nav-item ${activeView === "studio" ? "active" : ""}`} onClick={() => onChange("studio")}><Grid3X3 size={19} />Studio<sup>β</sup></button><button className={`nav-item ${activeView === "archive" ? "active" : ""}`} onClick={() => onChange("archive")}><Library size={19} />보관함</button></nav>;
   return <nav className="bottom-nav" aria-label="주요 메뉴"><button className={`nav-item ${activeView === "today" ? "active" : ""}`} onClick={() => onChange("today")}><Disc3 size={19} />오늘</button><button className={`nav-item ${activeView === "calendar" ? "active" : ""}`} onClick={() => onChange("calendar")}><CalendarDays size={19} />달력</button><button className="nav-item" onClick={onRecord} aria-label="새 기록"><span className="record-circle" />기록</button><button className={`nav-item ${activeView === "map" ? "active" : ""}`} onClick={() => onChange("map")}><MapIcon size={19} />지도</button><button className={`nav-item ${activeView === "archive" ? "active" : ""}`} onClick={() => onChange("archive")}><Library size={19} />보관함</button></nav>;
 }
