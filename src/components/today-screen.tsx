@@ -46,13 +46,13 @@ type CurrentLocation = { latitude: number; longitude: number; accuracyMeters?: n
 
 async function preparePhoto(file: File) {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const scale = Math.min(1, 1280 / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bitmap.width * scale);
   canvas.height = Math.round(bitmap.height * scale);
   canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.78));
   if (!blob) throw new Error("사진을 준비하지 못했습니다.");
   return new File([blob], `${file.name.replace(/\.[^.]+$/, "") || "moment"}.jpg`, { type: "image/jpeg" });
 }

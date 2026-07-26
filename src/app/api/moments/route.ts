@@ -205,6 +205,9 @@ export async function POST(request: NextRequest) {
           },
         }
       });
+    }, {
+      maxWait: 10_000,
+      timeout: 20_000,
     });
     return NextResponse.json({ moment: serializeMoment(entry) }, { status: 201 });
   } catch (error) {
