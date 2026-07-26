@@ -360,9 +360,9 @@ function DiaryHome({ session, onInstall, installed }: {
       {composerOpen ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="composer-title">
           <section className="composer">
-            <div className="composer-head"><span>새 기록</span><button className="nav-item" onClick={() => setComposerOpen(false)} aria-label="닫기"><X /></button></div>
+            <div className="composer-head"><span>지금의 순간</span><button className="icon-button composer-close" onClick={() => setComposerOpen(false)} aria-label="닫기"><X /></button></div>
             <h2 id="composer-title" className="serif">지금의 음악을<br />이 장소에 남겨요</h2>
-            <div className="timeline-item">
+            <div className="timeline-item composer-track">
               <div className="thumb">{track?.coverUrl ? <Image src={track.coverUrl} alt="" fill sizes="46px" /> : <Disc3 />}</div>
               <div><strong>{track?.title ?? "재생 중인 음악 없음"}</strong><span>{track?.artist ?? "Spotify"}</span></div>
             </div>
@@ -403,7 +403,10 @@ function DiaryHome({ session, onInstall, installed }: {
               <input type="checkbox" checked={includeLocation} onChange={(event) => setIncludeLocation(event.target.checked)} />
               <Navigation size={17} /><span>현재 위치를 지도에 함께 저장</span>
             </label>
-            <button className="btn btn-primary" onClick={saveMoment} disabled={saving}>{saving ? "저장 중…" : "비공개로 기록 저장"}</button>
+            <div className="composer-submit">
+              <button className="btn btn-primary" onClick={saveMoment} disabled={saving}>{saving ? "저장 중…" : "이 순간 저장하기"}</button>
+              <small>음악, 메모, 사진과 선택한 위치는 나에게만 보여요.</small>
+            </div>
           </section>
         </div>
       ) : null}

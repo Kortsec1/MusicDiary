@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type MapMoment = {
   id: string;
@@ -23,13 +23,13 @@ export function DayMap({ moments, currentLocation }: {
   currentLocation?: { latitude: number; longitude: number } | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const vworldKey = process.env.NEXT_PUBLIC_VWORLD_API_KEY;
+  const [mapStatus, setMapStatus] = useState<"loading" | "ready" | "error">("loading");
   const currentLatitude = currentLocation?.latitude;
   const currentLongitude = currentLocation?.longitude;
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !vworldKey) return;
+    if (!container) return;
     let disposed = false;
     let map: import("leaflet").Map | null = null;
 
@@ -47,15 +47,22 @@ export function DayMap({ moments, currentLocation }: {
         zoomControl: true,
         attributionControl: true,
       });
-      L.tileLayer(
-        `https://api.vworld.kr/req/wmts/1.0.0/${vworldKey}/Base/{z}/{y}/{x}.png`,
+      const tiles = L.tileLayer(
+        "/api/map/tiles/{z}/{y}/{x}",
         {
           minZoom: 6,
           maxZoom: 19,
           tileSize: 256,
           attribution: "© 국토교통부 VWorld",
         },
-      ).addTo(map);
+      );
+      let tileErrors = 0;
+      tiles.on("load", () => setMapStatus("ready"));
+      tiles.on("tileerror", () => {
+        tileErrors += 1;
+        if (tileErrors >= 3) setMapStatus("error");
+      });
+      tiles.addTo(map);
 
       const coordinates = located.map((moment) => [
         moment.location!.latitude,
@@ -113,16 +120,13 @@ export function DayMap({ moments, currentLocation }: {
       disposed = true;
       map?.remove();
     };
-  }, [currentLatitude, currentLongitude, moments, vworldKey]);
+  }, [currentLatitude, currentLongitude, moments]);
 
-  if (!vworldKey) {
-    return (
-      <div className="day-map map-unavailable">
-        <strong>한국 지도를 준비 중이에요</strong>
-        <span>VWorld 연결 설정을 확인하고 있습니다.</span>
-      </div>
-    );
-  }
-
-  return <div ref={containerRef} className="day-map" aria-label="오늘 기록 지도" />;
+  return (
+    <div className="day-map-shell">
+      <div ref={containerRef} className="day-map" aria-label="오늘 기록 지도" />
+      {mapStatus === "loading" ? <div className="map-status">한국 지도 불러오는 중…</div> : null}
+      {mapStatus === "error" ? <div className="map-status map-status-error">지도를 불러오지 못했어요. 화면을 새로고침해 주세요.</div> : null}
+    </div>
+  );
 }
