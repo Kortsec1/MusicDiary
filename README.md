@@ -24,6 +24,24 @@ pnpm dev
 4. `pnpm prisma migrate deploy`로 운영 migration을 적용한 뒤 main 브랜치를 배포합니다.
 5. Spotify 운영 Redirect URI를 배포 도메인과 정확히 맞춥니다.
 
+## Spotify 연결
+
+1. [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)에서 앱을 생성합니다.
+2. 앱의 Redirect URI에 `https://daytrack-nine.vercel.app/api/auth/spotify/callback`을 등록합니다.
+3. Vercel Production 환경 변수에 `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`,
+   `SPOTIFY_REDIRECT_URI`를 등록합니다.
+4. 재배포한 뒤 DAYTRACK 첫 화면의 `Spotify 연결하기`를 누릅니다.
+
+OAuth access/refresh token은 브라우저에 노출하지 않고 AES-256-GCM으로 암호화해
+`SpotifyConnection`에 저장합니다. 로그인 세션은 HttpOnly·Secure·SameSite 쿠키를 사용합니다.
+
+## 홈 화면에 추가
+
+- iPhone/iPad: Safari 공유 버튼 → `홈 화면에 추가`
+- Android/Chrome: DAYTRACK 첫 화면의 `추가` 버튼 또는 브라우저 메뉴 → `앱 설치`
+
+서비스 워커와 PWA manifest가 포함되어 설치 후 standalone 앱으로 실행됩니다.
+
 필수 비밀값은 `.env.example`을 참고하세요. `SPOTIFY_CLIENT_SECRET`, `SESSION_SECRET`, `TOKEN_ENCRYPTION_KEY`, DB 비밀번호는 저장소나 `NEXT_PUBLIC_*` 변수에 넣지 않습니다.
 
 ## 검증

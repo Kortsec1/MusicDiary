@@ -5,6 +5,8 @@ export const metadata: Metadata = {
   title: "DAYTRACK — 음악으로 기록하는 하루",
   description: "지금 듣는 음악과 함께 하루의 순간을 기록하세요.",
   manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "DAYTRACK" },
+  icons: { apple: "/icon-192.png" },
 };
 
 export const viewport: Viewport = {

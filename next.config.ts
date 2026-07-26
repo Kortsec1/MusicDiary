@@ -23,6 +23,9 @@ const securityHeaders = [
 
 const config: NextConfig = {
   poweredByHeader: false,
+  images: {
+    remotePatterns: [{ protocol: "https", hostname: "i.scdn.co" }],
+  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },
