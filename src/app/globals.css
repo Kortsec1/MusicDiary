@@ -90,6 +90,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .onboarding-mark { display:flex; align-items:center; gap:10px; color:var(--accent); font:13px Georgia,serif; letter-spacing:.24em; margin-bottom:40px; }
 .onboarding-card h1 { font-size:clamp(42px,10vw,68px); line-height:1.02; font-weight:400; margin:0 0 20px; }
 .onboarding-copy { color:var(--muted); line-height:1.75; max-width:46ch; margin:0 0 34px; }
+.spotify-login { width:100%; min-height:54px; margin:0 0 24px; border:0; border-radius:999px; background:#1ed760; color:#101010; display:flex; align-items:center; justify-content:center; gap:10px; font-weight:700; font-size:14px; text-decoration:none; cursor:pointer; }
+.spotify-login.disabled { opacity:.48; cursor:not-allowed; }
 .setup-list { list-style:none; padding:0; margin:0; border-top:1px solid var(--line); }
 .setup-list li { min-height:82px; display:grid; grid-template-columns:42px 1fr auto; gap:12px; align-items:center; border-bottom:1px solid var(--line); opacity:.48; }
 .setup-list li.active,.setup-list li.done { opacity:1; }

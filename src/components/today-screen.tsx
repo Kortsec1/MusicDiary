@@ -114,19 +114,20 @@ export function TodayScreen() {
         <section className="onboarding-card">
           <div className="onboarding-mark"><Disc3 /><span>DAYTRACK</span></div>
           <h1 className="serif">음악과 함께<br />오늘을 시작하세요.</h1>
-          <p className="onboarding-copy">처음 한 번만 권한과 Spotify 연결을 확인합니다. 위치는 순간 기록에만 사용하며 음악 토큰은 서버에서 암호화해 보관합니다.</p>
+          <p className="onboarding-copy">Spotify로 로그인하면 음악 접근 권한을 확인하고 DAYTRACK 계정을 자동으로 준비합니다. 별도의 회원가입은 필요하지 않습니다.</p>
+
+          {!session.connected && session.configured && <a className="spotify-login" href="/api/auth/spotify"><Music2 />Spotify로 로그인</a>}
+          {!session.connected && !session.configured && <button className="spotify-login disabled" disabled><Music2 />Spotify 로그인 준비 중</button>}
 
           <ol className="setup-list">
-            <li className={permissionsChecked ? "done" : "active"}>
+            <li className={session.connected ? "done" : "active"}>
+              <span className="step-icon">{session.connected ? <Check /> : <Music2 />}</span>
+              <div><strong>Spotify 로그인</strong><small>{session.connected ? `${session.user?.displayName} 계정으로 로그인됨` : "재생 음악과 최근 기록 접근 승인"}</small></div>
+            </li>
+            <li className={permissionsChecked ? "done" : session.connected ? "active" : ""}>
               <span className="step-icon">{permissionsChecked ? <Check /> : <LocateFixed />}</span>
               <div><strong>기기 권한 확인</strong><small>위치 {locationState} · 알림 {notificationState}</small></div>
-              {!permissionsChecked && <button onClick={requestPermissions} disabled={permissionBusy}>{permissionBusy ? "확인 중…" : "권한 확인"}</button>}
-            </li>
-            <li className={session.connected ? "done" : permissionsChecked ? "active" : ""}>
-              <span className="step-icon">{session.connected ? <Check /> : <Music2 />}</span>
-              <div><strong>Spotify 연결</strong><small>{session.connected ? `${session.user?.displayName} 계정 연결됨` : "현재 재생 음악과 최근 기록 읽기"}</small></div>
-              {!session.connected && permissionsChecked && session.configured && <a href="/api/auth/spotify">Spotify로 계속하기</a>}
-              {!session.connected && permissionsChecked && !session.configured && <button disabled>연결 준비 중</button>}
+              {!permissionsChecked && session.connected && <button onClick={requestPermissions} disabled={permissionBusy}>{permissionBusy ? "확인 중…" : "권한 확인"}</button>}
             </li>
             <li className={installed ? "done" : ""}>
               <span className="step-icon">{installed ? <Check /> : <Smartphone />}</span>
@@ -135,7 +136,7 @@ export function TodayScreen() {
             </li>
           </ol>
 
-          {!session.configured && permissionsChecked && <p className="connection-note">Spotify 연결을 준비하고 있습니다. 앱 운영 설정이 완료되면 사용자는 이 화면에서 한 번의 승인만으로 바로 시작할 수 있습니다.</p>}
+          {!session.configured && <p className="connection-note">Spotify 로그인을 준비하고 있습니다. 운영 설정이 완료되면 사용자는 Spotify 승인 한 번으로 바로 시작할 수 있습니다.</p>}
           <p className="privacy-note">권한을 거부해도 설정에서 나중에 변경할 수 있습니다.</p>
         </section>
       </main>
