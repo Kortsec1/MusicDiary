@@ -20,6 +20,19 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "잘못된 날짜 범위예요." }, { status: 400 });
   const start = new Date(parsed.data.start);
   const end = new Date(parsed.data.end);
+  const albumDate = new Date(`${parsed.data.date}T00:00:00.000Z`);
+  const existingAlbum = await prisma.dailyAlbum.findUnique({
+    where: { userId_albumDate: { userId: user.id, albumDate } },
+  });
+  const existingStats = existingAlbum?.stats && typeof existingAlbum.stats === "object"
+    ? existingAlbum.stats as Record<string, unknown>
+    : null;
+  if (existingAlbum?.status === "FINALIZED" && existingStats?.version === 2) {
+    return NextResponse.json({
+      album: await buildRecapPayload(existingAlbum.id, user.id),
+      alreadyFinalized: true,
+    });
+  }
 
   const [entries, events] = await Promise.all([
     prisma.diaryEntry.findMany({
@@ -35,36 +48,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "정산할 음악 기록이 아직 없어요." }, { status: 409 });
   }
 
-  const byEvent = new Map(entries.filter((entry) => entry.sourceListeningEventId)
-    .map((entry) => [entry.sourceListeningEventId!, entry]));
   const timeline: Array<{
     trackId: string;
     listeningEventId?: string;
     diaryEntryId?: string;
     at: Date;
     caption: string | null;
-  }> = events.map((event) => ({
-    trackId: event.trackId,
-    listeningEventId: event.id,
-    diaryEntryId: byEvent.get(event.id)?.id,
-    at: event.playedAt,
-    caption: byEvent.get(event.id)?.note || null,
+  }> = entries.map((entry) => ({
+    trackId: entry.trackId,
+    listeningEventId: entry.sourceListeningEventId ?? undefined,
+    diaryEntryId: entry.id,
+    at: entry.occurredAt,
+    caption: entry.note || null,
   }));
-  for (const entry of entries) {
-    if (!entry.sourceListeningEventId || !events.some((event) => event.id === entry.sourceListeningEventId)) {
+  for (const event of events) {
+    const matchedMoment = entries.some((entry) =>
+      entry.trackId === event.trackId
+      && Math.abs(entry.occurredAt.getTime() - event.playedAt.getTime()) <= 120_000,
+    );
+    if (!matchedMoment) {
       timeline.push({
-        trackId: entry.trackId,
-        listeningEventId: undefined,
-        diaryEntryId: entry.id,
-        at: entry.occurredAt,
-        caption: entry.note || null,
+        trackId: event.trackId,
+        listeningEventId: event.id,
+        at: event.playedAt,
+        caption: null,
       });
     }
   }
   timeline.sort((a, b) => a.at.getTime() - b.at.getTime());
 
   const uniqueTracks = new Set(timeline.map((item) => item.trackId)).size;
-  const albumDate = new Date(`${parsed.data.date}T00:00:00.000Z`);
   const album = await prisma.$transaction(async (tx) => {
     const saved = await tx.dailyAlbum.upsert({
       where: { userId_albumDate: { userId: user.id, albumDate } },
@@ -78,13 +91,13 @@ export async function POST(request: NextRequest) {
         coverDiaryEntryId: entries.find((entry) => entry.id)?.id,
         status: "FINALIZED",
         finalizedAt: new Date(),
-        stats: { moments: entries.length, plays: timeline.length, tracks: uniqueTracks },
+        stats: { version: 2, moments: entries.length, plays: timeline.length, tracks: uniqueTracks },
       },
       update: {
         summary: parsed.data.summary,
         status: "FINALIZED",
         finalizedAt: new Date(),
-        stats: { moments: entries.length, plays: timeline.length, tracks: uniqueTracks },
+        stats: { version: 2, moments: entries.length, plays: timeline.length, tracks: uniqueTracks },
       },
     });
     await tx.dailyAlbumItem.deleteMany({ where: { dailyAlbumId: saved.id } });

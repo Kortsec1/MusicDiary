@@ -2,8 +2,8 @@
 /* eslint-disable react-hooks/set-state-in-effect -- Initial client-only session and device state are synchronized after hydration. */
 
 import {
-  Archive, BookOpen, CalendarDays, Camera, Check, Disc3, Download, Library,
-  LocateFixed, Map as MapIcon, Menu, Music2, Navigation, Settings,
+  Archive, BookOpen, CalendarDays, Camera, Check, ChevronRight, Disc3, Download, Library,
+  LoaderCircle, LocateFixed, Map as MapIcon, Menu, Music2, Navigation, Settings,
   Smartphone, UserRound, X,
 } from "lucide-react";
 import Image from "next/image";
@@ -206,6 +206,9 @@ function DiaryHome({ session, onInstall, installed }: {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [recap, setRecap] = useState<Recap | null>(null);
+  const [recaps, setRecaps] = useState<Recap[]>([]);
+  const [confirmFinalize, setConfirmFinalize] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
   const pollTimer = useRef<number | null>(null);
   const progressTimer = useRef<number | null>(null);
 
@@ -233,10 +236,32 @@ function DiaryHome({ session, onInstall, installed }: {
     }
   }, []);
 
+  const loadRecaps = useCallback(async () => {
+    const response = await fetch("/api/daily-albums", { cache: "no-store" });
+    if (response.ok) {
+      const payload = await response.json();
+      setRecaps(payload.recaps);
+    }
+  }, []);
+
   useEffect(() => {
     queueMicrotask(() => setNote(localStorage.getItem("daytrack-draft") || ""));
-    void Promise.all([loadPlayback(), loadMoments(), getCurrentLocation().then(setCurrentLocation), fetch("/api/spotify/sync", { method: "POST" })]);
-  }, [loadMoments, loadPlayback]);
+    void Promise.all([loadPlayback(), loadMoments(), loadRecaps(), getCurrentLocation().then(setCurrentLocation), fetch("/api/spotify/sync", { method: "POST" })]);
+  }, [loadMoments, loadPlayback, loadRecaps]);
+
+  useEffect(() => {
+    const now = new Date();
+    const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 2);
+    const timer = window.setTimeout(() => {
+      setMoments([]);
+      setRecap(null);
+      setComposerOpen(false);
+      setNote("");
+      localStorage.removeItem("daytrack-draft");
+      void Promise.all([loadMoments(), loadPlayback(), loadRecaps()]);
+    }, Math.max(1_000, nextDay.getTime() - now.getTime()));
+    return () => window.clearTimeout(timer);
+  }, [loadMoments, loadPlayback, loadRecaps]);
 
   useEffect(() => {
     const schedule = () => {
@@ -317,15 +342,28 @@ function DiaryHome({ session, onInstall, installed }: {
   }
 
   async function finalizeDay() {
+    if (finalizing) return;
+    setFinalizing(true);
     const range = dayRange();
-    const response = await fetch("/api/daily-albums/today", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...range, summary: note || undefined }),
-    });
-    const payload = await response.json();
-    setToast(response.ok ? `${payload.album.moments}개의 순간으로 오늘의 앨범을 정산했어요.` : payload.error);
-    window.setTimeout(() => setToast(""), 3200);
+    try {
+      const response = await fetch("/api/daily-albums/today", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...range, summary: note || undefined }),
+      });
+      const payload = await response.json();
+      if (response.ok) {
+        setRecap(payload.album);
+        setRecaps((items) => [payload.album, ...items.filter((item) => item.id !== payload.album.id)]);
+        setConfirmFinalize(false);
+        setToast(payload.alreadyFinalized ? "이미 정산된 오늘의 카드를 다시 열었어요." : "오늘의 정산 카드가 완성됐어요.");
+      } else {
+        setToast(payload.error);
+      }
+    } finally {
+      setFinalizing(false);
+      window.setTimeout(() => setToast(""), 3200);
+    }
   }
 
   async function shareRecap() {
@@ -337,7 +375,12 @@ function DiaryHome({ session, onInstall, installed }: {
       return;
     }
     if (navigator.share) {
-      await navigator.share({ title: recap.title, text: "나의 오늘을 음악으로 기록했어요.", url: payload.url });
+      try {
+        await navigator.share({ title: recap.title, text: "나의 오늘을 음악으로 기록했어요.", url: payload.url });
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setToast("공유를 완료하지 못했어요.");
+      }
     } else {
       await navigator.clipboard.writeText(payload.url);
       setToast("공유 링크를 복사했어요.");
@@ -369,11 +412,12 @@ function DiaryHome({ session, onInstall, installed }: {
           locatedMoments={locatedMoments}
           currentLocation={currentLocation}
           onRecord={() => setComposerOpen(true)}
-          onFinalize={finalizeDay}
+          onFinalize={() => setConfirmFinalize(true)}
+          finalizing={finalizing}
         />
       ) : null}
       {activeView === "calendar" ? <CalendarView moments={moments} /> : null}
-      {activeView === "archive" ? <ArchiveView moments={moments} /> : null}
+      {activeView === "archive" ? <ArchiveView recaps={recaps} onOpen={setRecap} /> : null}
       {activeView === "settings" ? <SettingsView session={session} installed={installed} onInstall={onInstall} /> : null}
       <BottomNav activeView={activeView} onChange={setActiveView} onRecord={() => setComposerOpen(true)} />
       {composerOpen ? (
@@ -429,6 +473,27 @@ function DiaryHome({ session, onInstall, installed }: {
           </section>
         </div>
       ) : null}
+      {confirmFinalize ? (
+        <div className="confirm-backdrop" role="dialog" aria-modal="true" aria-labelledby="finalize-title">
+          <section className="finalize-sheet">
+            <span className="finalize-mark"><BookOpen /></span>
+            <p>오늘의 기록을 한 장으로</p>
+            <h2 id="finalize-title">지금 정산할까요?</h2>
+            <div className="finalize-preview">
+              <div><b>{moments.length}</b><span>직접 남긴 순간</span></div>
+              <div><b>{locatedMoments.length}</b><span>지도에 남긴 장소</span></div>
+              <div><b>{moments.filter((item) => item.photos.length).length}</b><span>함께 담을 사진</span></div>
+            </div>
+            <p className="finalize-note">정산하면 오늘의 카드는 보관함에 저장됩니다. 같은 날 다시 눌러도 순간이 중복되거나 늘어나지 않아요.</p>
+            <div className="finalize-buttons">
+              <button onClick={() => setConfirmFinalize(false)} disabled={finalizing}>아직 더 기록할게요</button>
+              <button className="finalize-primary" onClick={finalizeDay} disabled={finalizing}>
+                {finalizing ? <><LoaderCircle className="spin-icon" />정산 중…</> : "정산하고 카드 보기"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
       {recap ? <div className="recap-backdrop" role="dialog" aria-modal="true" aria-label="오늘의 정산 카드"><RecapCard recap={recap} onClose={() => setRecap(null)} onShare={shareRecap} /></div> : null}
       {toast ? <div className="toast" role="status">{toast}</div> : null}
     </main>
@@ -479,18 +544,21 @@ function TodayView({ track, playback, progress, displayProgress, moments, syncin
   );
 }
 
-function MapTimeline({ moments, locatedMoments, currentLocation, onRecord, onFinalize }: {
+function MapTimeline({ moments, locatedMoments, currentLocation, onRecord, onFinalize, finalizing }: {
   moments: Moment[];
   locatedMoments: Moment[];
   currentLocation: CurrentLocation | null;
   onRecord: () => void;
   onFinalize: () => void;
+  finalizing: boolean;
 }) {
   return (
     <section className="map-screen">
       <div className="view-heading">
         <div><p>{new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(new Date())}</p><h1 className="serif">하루 지도 타임라인</h1></div>
-        <button className="text-action" onClick={onFinalize}>오늘을 정산하기</button>
+        <button className="text-action finalize-trigger" onClick={onFinalize} disabled={finalizing}>
+          {finalizing ? <><LoaderCircle className="spin-icon" />정산 중…</> : "오늘을 정산하기"}
+        </button>
       </div>
       <div className="map-frame">
         <DayMap moments={locatedMoments} currentLocation={currentLocation} />
@@ -538,8 +606,34 @@ function CalendarView({ moments }: { moments: Moment[] }) {
   return <section className="utility-screen"><div className="view-heading"><div><p>{today.getFullYear()}년</p><h1 className="serif">{today.getMonth() + 1}월의 기록</h1></div></div><div className="calendar-grid">{["일","월","화","수","목","금","토"].map((day) => <b key={day}>{day}</b>)}{Array.from({ length: new Date(today.getFullYear(), today.getMonth(), 1).getDay() }, (_, i) => <span key={`blank-${i}`} />)}{days.map((day) => <span className={day === today.getDate() ? "today" : ""} key={day}>{day}{day === today.getDate() && moments.length ? <i /> : null}</span>)}</div><MomentList moments={moments} /></section>;
 }
 
-function ArchiveView({ moments }: { moments: Moment[] }) {
-  return <section className="utility-screen"><div className="view-heading"><div><p>나의 음악 일기</p><h1 className="serif">기록 보관함</h1></div><Archive /></div><MomentList moments={moments} /></section>;
+function ArchiveView({ recaps, onOpen }: { recaps: Recap[]; onOpen: (recap: Recap) => void }) {
+  return (
+    <section className="utility-screen archive-screen">
+      <div className="view-heading"><div><p>완료된 하루는 여기에</p><h1 className="serif">정산 카드 보관함</h1></div><Archive /></div>
+      {!recaps.length ? (
+        <div className="archive-empty"><BookOpen /><strong>아직 완성된 카드가 없어요</strong><p>지도에서 ‘오늘을 정산하기’를 누르면 이곳에 계속 보관됩니다.</p></div>
+      ) : (
+        <div className="recap-library">
+          {recaps.map((item) => (
+            <button className="recap-library-item" key={item.id} onClick={() => onOpen(item)}>
+              <div className="library-covers">
+                {item.items.slice(0, 3).map((track) => (
+                  <span key={track.id}>{track.coverUrl ? <Image src={track.coverUrl} alt="" fill sizes="72px" /> : <Disc3 />}</span>
+                ))}
+              </div>
+              <div className="library-copy">
+                <time>{new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short", timeZone: "UTC" }).format(new Date(`${item.date}T12:00:00Z`))}</time>
+                <strong>{item.title}</strong>
+                <small>{item.moments}개의 순간 · {item.stats.tracks}곡 · {item.stats.places}곳</small>
+                {item.items.some((track) => track.photoAssetId) ? <em><Camera />사진 포함</em> : null}
+              </div>
+              <ChevronRight />
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 function SettingsView({ session, installed, onInstall }: { session: SessionState; installed: boolean; onInstall: () => void }) {

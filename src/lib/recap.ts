@@ -39,6 +39,7 @@ export async function buildRecapPayload(albumId: string, userId?: string) {
       coverUrl: item.track.album?.coverImageUrl ?? null,
       occurredAt: occurredAt.toISOString(),
       caption: item.caption,
+      isMoment: Boolean(item.diaryEntryId),
       photoAssetId: item.diaryEntry?.mediaAssets[0]?.id ?? null,
       location: location ? {
         latitude: Number(location.latitude),
@@ -55,8 +56,9 @@ export async function buildRecapPayload(albumId: string, userId?: string) {
     title: album.title,
     summary: album.summary,
     status: album.status,
-    moments: items.length,
+    moments: items.filter((item) => item.isMoment).length,
     stats: {
+      moments: items.filter((item) => item.isMoment).length,
       plays: items.length,
       tracks: new Set(items.map((item) => `${item.title}:${item.artist}`)).size,
       places: places.size,

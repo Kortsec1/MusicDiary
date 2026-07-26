@@ -9,7 +9,8 @@ export type Recap = {
   date: string;
   title: string;
   summary: string | null;
-  stats: { plays: number; tracks: number; places: number; durationMinutes: number };
+  moments: number;
+  stats: { moments: number; plays: number; tracks: number; places: number; durationMinutes: number };
   items: Array<{
     id: string;
     title: string;
@@ -17,6 +18,7 @@ export type Recap = {
     coverUrl: string | null;
     occurredAt: string;
     caption: string | null;
+    isMoment: boolean;
     photoAssetId: string | null;
     location: {
       latitude: number;
