@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "public": true
+  "public": true,
+  "crons": [
+    {
+      "path": "/api/cron/spotify-sync",
+      "schedule": "5 15 * * *"
+    }
+  ]
 }

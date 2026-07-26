@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
+import { buildRecapPayload } from "@/lib/recap";
 
 export const dynamic = "force-dynamic";
 
@@ -16,19 +17,53 @@ export async function POST(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const parsed = finalizeSchema.safeParse(await request.json());
-  if (!parsed.success) return NextResponse.json({ error: "Invalid recap" }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "잘못된 날짜 범위예요." }, { status: 400 });
+  const start = new Date(parsed.data.start);
+  const end = new Date(parsed.data.end);
 
-  const entries = await prisma.diaryEntry.findMany({
-    where: {
-      userId: user.id,
-      deletedAt: null,
-      occurredAt: { gte: new Date(parsed.data.start), lt: new Date(parsed.data.end) },
-    },
-    orderBy: { occurredAt: "asc" },
-  });
-  if (!entries.length) return NextResponse.json({ error: "정산할 기록이 아직 없습니다." }, { status: 409 });
+  const [entries, events] = await Promise.all([
+    prisma.diaryEntry.findMany({
+      where: { userId: user.id, deletedAt: null, occurredAt: { gte: start, lt: end } },
+      orderBy: { occurredAt: "asc" },
+    }),
+    prisma.listeningEvent.findMany({
+      where: { userId: user.id, playedAt: { gte: start, lt: end } },
+      orderBy: { playedAt: "asc" },
+    }),
+  ]);
+  if (!entries.length && !events.length) {
+    return NextResponse.json({ error: "정산할 음악 기록이 아직 없어요." }, { status: 409 });
+  }
 
-  const uniqueTracks = new Set(entries.map((entry) => entry.trackId)).size;
+  const byEvent = new Map(entries.filter((entry) => entry.sourceListeningEventId)
+    .map((entry) => [entry.sourceListeningEventId!, entry]));
+  const timeline: Array<{
+    trackId: string;
+    listeningEventId?: string;
+    diaryEntryId?: string;
+    at: Date;
+    caption: string | null;
+  }> = events.map((event) => ({
+    trackId: event.trackId,
+    listeningEventId: event.id,
+    diaryEntryId: byEvent.get(event.id)?.id,
+    at: event.playedAt,
+    caption: byEvent.get(event.id)?.note || null,
+  }));
+  for (const entry of entries) {
+    if (!entry.sourceListeningEventId || !events.some((event) => event.id === entry.sourceListeningEventId)) {
+      timeline.push({
+        trackId: entry.trackId,
+        listeningEventId: undefined,
+        diaryEntryId: entry.id,
+        at: entry.occurredAt,
+        caption: entry.note || null,
+      });
+    }
+  }
+  timeline.sort((a, b) => a.at.getTime() - b.at.getTime());
+
+  const uniqueTracks = new Set(timeline.map((item) => item.trackId)).size;
   const albumDate = new Date(`${parsed.data.date}T00:00:00.000Z`);
   const album = await prisma.$transaction(async (tx) => {
     const saved = await tx.dailyAlbum.upsert({
@@ -37,32 +72,35 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         albumDate,
         timezone: user.timezone,
-        title: `${parsed.data.date}의 음악 지도`,
+        title: "오늘의 사운드트랙",
+        subtitle: parsed.data.date,
         summary: parsed.data.summary,
+        coverDiaryEntryId: entries.find((entry) => entry.id)?.id,
         status: "FINALIZED",
         finalizedAt: new Date(),
-        stats: { moments: entries.length, tracks: uniqueTracks },
+        stats: { moments: entries.length, plays: timeline.length, tracks: uniqueTracks },
       },
       update: {
         summary: parsed.data.summary,
         status: "FINALIZED",
         finalizedAt: new Date(),
-        stats: { moments: entries.length, tracks: uniqueTracks },
+        stats: { moments: entries.length, plays: timeline.length, tracks: uniqueTracks },
       },
     });
     await tx.dailyAlbumItem.deleteMany({ where: { dailyAlbumId: saved.id } });
-    await tx.dailyAlbumItem.createMany({
-      data: entries.map((entry, position) => ({
-        dailyAlbumId: saved.id,
-        trackId: entry.trackId,
-        diaryEntryId: entry.id,
-        position,
-        caption: entry.note || null,
-      })),
-    });
+    if (timeline.length) {
+      await tx.dailyAlbumItem.createMany({
+        data: timeline.map((item, position) => ({
+          dailyAlbumId: saved.id,
+          trackId: item.trackId,
+          diaryEntryId: item.diaryEntryId,
+          listeningEventId: item.listeningEventId,
+          position,
+          caption: item.caption,
+        })),
+      });
+    }
     return saved;
   });
-  return NextResponse.json({
-    album: { id: album.id, status: album.status, moments: entries.length, tracks: uniqueTracks },
-  });
+  return NextResponse.json({ album: await buildRecapPayload(album.id, user.id) });
 }

@@ -9,6 +9,7 @@ import {
 import Image from "next/image";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DayMap, type MapMoment } from "@/components/day-map";
+import { RecapCard, type Recap } from "@/components/recap-card";
 
 type SessionState = {
   connected: boolean;
@@ -204,6 +205,7 @@ function DiaryHome({ session, onInstall, installed }: {
   const [toast, setToast] = useState("");
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [recap, setRecap] = useState<Recap | null>(null);
   const pollTimer = useRef<number | null>(null);
   const progressTimer = useRef<number | null>(null);
 
@@ -233,7 +235,7 @@ function DiaryHome({ session, onInstall, installed }: {
 
   useEffect(() => {
     queueMicrotask(() => setNote(localStorage.getItem("daytrack-draft") || ""));
-    void Promise.all([loadPlayback(), loadMoments(), getCurrentLocation().then(setCurrentLocation)]);
+    void Promise.all([loadPlayback(), loadMoments(), getCurrentLocation().then(setCurrentLocation), fetch("/api/spotify/sync", { method: "POST" })]);
   }, [loadMoments, loadPlayback]);
 
   useEffect(() => {
@@ -246,7 +248,7 @@ function DiaryHome({ session, onInstall, installed }: {
     };
     schedule();
     const refresh = () => {
-      if (document.visibilityState === "visible") void Promise.all([loadPlayback(), loadMoments()]);
+      if (document.visibilityState === "visible") void Promise.all([loadPlayback(), loadMoments(), fetch("/api/spotify/sync", { method: "POST" })]);
     };
     document.addEventListener("visibilitychange", refresh);
     window.addEventListener("focus", refresh);
@@ -297,6 +299,7 @@ function DiaryHome({ session, onInstall, installed }: {
       body: formData,
     });
     const payload = await response.json();
+    if (response.ok) setRecap(payload.album);
     if (response.ok) {
       setMoments((items) => [...items, payload.moment]);
       setComposerOpen(false);
@@ -323,6 +326,22 @@ function DiaryHome({ session, onInstall, installed }: {
     const payload = await response.json();
     setToast(response.ok ? `${payload.album.moments}개의 순간으로 오늘의 앨범을 정산했어요.` : payload.error);
     window.setTimeout(() => setToast(""), 3200);
+  }
+
+  async function shareRecap() {
+    if (!recap) return;
+    const response = await fetch(`/api/daily-albums/${recap.id}/share`, { method: "POST" });
+    const payload = await response.json();
+    if (!response.ok) {
+      setToast(payload.error || "공유 링크를 만들지 못했어요.");
+      return;
+    }
+    if (navigator.share) {
+      await navigator.share({ title: recap.title, text: "나의 오늘을 음악으로 기록했어요.", url: payload.url });
+    } else {
+      await navigator.clipboard.writeText(payload.url);
+      setToast("공유 링크를 복사했어요.");
+    }
   }
 
   return (
@@ -410,6 +429,7 @@ function DiaryHome({ session, onInstall, installed }: {
           </section>
         </div>
       ) : null}
+      {recap ? <div className="recap-backdrop" role="dialog" aria-modal="true" aria-label="오늘의 정산 카드"><RecapCard recap={recap} onClose={() => setRecap(null)} onShare={shareRecap} /></div> : null}
       {toast ? <div className="toast" role="status">{toast}</div> : null}
     </main>
   );
