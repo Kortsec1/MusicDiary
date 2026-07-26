@@ -138,6 +138,7 @@ model Track {
   diaryEntries DiaryEntry[]
   dailyAlbumItems DailyAlbumItem[]
   @@unique([provider, providerTrackId])
+  @@index([albumId])
 }
 
 model TrackArtist {
@@ -148,6 +149,7 @@ model TrackArtist {
   artist Artist @relation(fields: [artistId], references: [id], onDelete: Cascade)
   @@id([trackId, artistId])
   @@unique([trackId, position])
+  @@index([artistId])
 }
 
 model LocationSnapshot {
@@ -191,6 +193,8 @@ model ListeningEvent {
   @@index([userId, playedAt])
   @@index([userId, trackId])
   @@index([userId, source])
+  @@index([trackId])
+  @@index([locationSnapshotId])
 }
 
 model DiaryEntry {
@@ -221,6 +225,9 @@ model DiaryEntry {
   @@index([userId, occurredAt])
   @@index([userId, trackId])
   @@index([userId, isFavorite])
+  @@index([trackId])
+  @@index([sourceListeningEventId])
+  @@index([locationSnapshotId])
 }
 
 model MediaAsset {
@@ -240,6 +247,8 @@ model MediaAsset {
   createdAt DateTime @default(now())
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   diaryEntry DiaryEntry @relation(fields: [diaryEntryId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([diaryEntryId])
 }
 
 model DailyAlbum {
@@ -264,6 +273,7 @@ model DailyAlbum {
   coverDiaryEntry DiaryEntry? @relation("DailyAlbumCover", fields: [coverDiaryEntryId], references: [id], onDelete: SetNull)
   items DailyAlbumItem[]
   @@unique([userId, albumDate])
+  @@index([coverDiaryEntryId])
 }
 
 model DailyAlbumItem {
@@ -280,6 +290,9 @@ model DailyAlbumItem {
   diaryEntry DiaryEntry? @relation(fields: [diaryEntryId], references: [id], onDelete: SetNull)
   listeningEvent ListeningEvent? @relation(fields: [listeningEventId], references: [id], onDelete: SetNull)
   @@unique([dailyAlbumId, position])
+  @@index([trackId])
+  @@index([diaryEntryId])
+  @@index([listeningEventId])
 }
 
 model SpotifySyncState {

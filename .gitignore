@@ -9,3 +9,6 @@ playwright-report
 storage/uploads
 *.log
 *.tsbuildinfo
+
+.vercel
+.env*
