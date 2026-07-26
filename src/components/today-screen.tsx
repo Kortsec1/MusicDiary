@@ -1,13 +1,14 @@
 "use client";
 
 import {
-  BookOpen, CalendarDays, Check, Disc3, Download,
-  Library, LocateFixed, Menu, Music2, Settings, Smartphone, UserRound, X,
+  Archive, BookOpen, CalendarDays, Check, Disc3, Download, Library,
+  LocateFixed, Map as MapIcon, Menu, Music2, Navigation, Settings,
+  Smartphone, UserRound, X,
 } from "lucide-react";
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DayMap, type MapMoment } from "@/components/day-map";
 
-type Moment = { title: string; artist: string; time: string; note?: string };
 type SessionState = {
   connected: boolean;
   configured: boolean;
@@ -16,25 +17,64 @@ type SessionState = {
 type TrackState = {
   playing: boolean;
   progressMs?: number;
+  sampledAt?: string;
   track: null | {
-    title: string; artist: string; album?: string; coverUrl?: string;
-    durationMs: number; spotifyUrl?: string;
+    id: string;
+    title: string;
+    artist: string;
+    album?: string;
+    coverUrl?: string;
+    durationMs: number;
+    spotifyUrl?: string;
   };
+};
+type Moment = MapMoment & {
+  album: string;
+  coverUrl: string | null;
+  spotifyUrl: string;
+  note: string;
+  mood: string | null;
 };
 type InstallPrompt = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
+type ActiveView = "today" | "calendar" | "map" | "archive" | "settings";
+type CurrentLocation = { latitude: number; longitude: number; accuracyMeters?: number };
 
-const initialMoments: Moment[] = [
-  { title: "Midnight City", artist: "M83", time: "21:41", note: "지금 재생 중" },
-  { title: "Wait", artist: "M83", time: "21:32" },
-  { title: "Outro", artist: "M83", time: "21:28" },
-];
+const moodOptions = ["평온", "기쁨", "그리움", "몰입"];
+
+function dayRange(date = new Date()) {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return {
+    start: start.toISOString(),
+    end: end.toISOString(),
+    date: [
+      start.getFullYear(),
+      String(start.getMonth() + 1).padStart(2, "0"),
+      String(start.getDate()).padStart(2, "0"),
+    ].join("-"),
+  };
+}
 
 function formatTime(milliseconds = 0) {
   const seconds = Math.floor(milliseconds / 1000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function getCurrentLocation(): Promise<CurrentLocation | null> {
+  if (!("geolocation" in navigator)) return Promise.resolve(null);
+  return new Promise((resolve) => navigator.geolocation.getCurrentPosition(
+    ({ coords }) => resolve({
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      accuracyMeters: coords.accuracy,
+    }),
+    () => resolve(null),
+    { enableHighAccuracy: true, timeout: 12_000, maximumAge: 30_000 },
+  ));
 }
 
 export function TodayScreen() {
@@ -52,35 +92,22 @@ export function TodayScreen() {
   }, []);
 
   useEffect(() => {
-    const hydrationTimer = window.setTimeout(() => {
-      setPermissionsChecked(localStorage.getItem("daytrack-permissions-checked") === "true");
-      setInstalled(window.matchMedia("(display-mode: standalone)").matches);
-      void loadSession();
-    }, 0);
+    setPermissionsChecked(localStorage.getItem("daytrack-permissions-checked") === "true");
+    setInstalled(window.matchMedia("(display-mode: standalone)").matches);
+    void loadSession();
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js");
     const captureInstall = (event: Event) => {
       event.preventDefault();
       setInstallPrompt(event as InstallPrompt);
     };
     window.addEventListener("beforeinstallprompt", captureInstall);
-    window.addEventListener("appinstalled", () => setInstalled(true), { once: true });
-    return () => {
-      window.clearTimeout(hydrationTimer);
-      window.removeEventListener("beforeinstallprompt", captureInstall);
-    };
+    return () => window.removeEventListener("beforeinstallprompt", captureInstall);
   }, [loadSession]);
 
   async function requestPermissions() {
     setPermissionBusy(true);
-    if ("geolocation" in navigator) {
-      await new Promise<void>((resolve) => navigator.geolocation.getCurrentPosition(
-        () => { setLocationState("허용됨"); resolve(); },
-        () => { setLocationState("허용 안 됨"); resolve(); },
-        { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
-      ));
-    } else {
-      setLocationState("지원 안 됨");
-    }
+    const location = await getCurrentLocation();
+    setLocationState(location ? "허용됨" : "허용 안 됨");
     if ("Notification" in window) {
       const result = await Notification.requestPermission();
       setNotificationState(result === "granted" ? "허용됨" : "허용 안 됨");
@@ -106,87 +133,169 @@ export function TodayScreen() {
   }
 
   if (!session) {
-    return <main className="onboarding"><div className="onboarding-card"><div className="spinner" /><p>DAYTRACK 준비 중…</p></div></main>;
+    return <main className="onboarding"><div className="onboarding-card loading-card"><div className="spinner" /><p>DAYTRACK 준비 중</p></div></main>;
   }
   if (!permissionsChecked || !session.connected) {
     return (
       <main className="onboarding">
         <section className="onboarding-card">
           <div className="onboarding-mark"><Disc3 /><span>DAYTRACK</span></div>
-          <h1 className="serif">음악과 함께<br />오늘을 시작하세요.</h1>
-          <p className="onboarding-copy">Spotify로 로그인하면 음악 접근 권한을 확인하고 DAYTRACK 계정을 자동으로 준비합니다. 별도의 회원가입은 필요하지 않습니다.</p>
-
-          {!session.connected && session.configured && <a className="spotify-login" href="/api/auth/spotify"><Music2 />Spotify로 로그인</a>}
-          {!session.connected && !session.configured && <button className="spotify-login disabled" disabled><Music2 />Spotify 로그인 준비 중</button>}
-
+          <h1 className="serif">음악과 함께<br />오늘을 시작하세요</h1>
+          <p className="onboarding-copy">Spotify로 로그인하면 각 사용자의 재생 기록을 본인 계정에서 가져옵니다. 위치는 기록 버튼을 누를 때만 저장합니다.</p>
+          {!session.connected && session.configured ? <a className="spotify-login" href="/api/auth/spotify"><Music2 />Spotify로 로그인</a> : null}
+          {!session.connected && !session.configured ? <button className="spotify-login disabled" disabled><Music2 />Spotify 로그인 준비 중</button> : null}
           <ol className="setup-list">
             <li className={session.connected ? "done" : "active"}>
               <span className="step-icon">{session.connected ? <Check /> : <Music2 />}</span>
-              <div><strong>Spotify 로그인</strong><small>{session.connected ? `${session.user?.displayName} 계정으로 로그인됨` : "재생 음악과 최근 기록 접근 승인"}</small></div>
+              <div><strong>Spotify 로그인</strong><small>{session.connected ? `${session.user?.displayName} 계정으로 연결됨` : "재생 음악과 최근 기록 접근 승인"}</small></div>
             </li>
             <li className={permissionsChecked ? "done" : session.connected ? "active" : ""}>
               <span className="step-icon">{permissionsChecked ? <Check /> : <LocateFixed />}</span>
               <div><strong>기기 권한 확인</strong><small>위치 {locationState} · 알림 {notificationState}</small></div>
-              {!permissionsChecked && session.connected && <button onClick={requestPermissions} disabled={permissionBusy}>{permissionBusy ? "확인 중…" : "권한 확인"}</button>}
+              {!permissionsChecked && session.connected ? <button onClick={requestPermissions} disabled={permissionBusy}>{permissionBusy ? "확인 중" : "권한 확인"}</button> : null}
             </li>
             <li className={installed ? "done" : ""}>
               <span className="step-icon">{installed ? <Check /> : <Smartphone />}</span>
               <div><strong>홈 화면에 추가</strong><small>{installed ? "앱 모드로 실행 중" : "전체 화면으로 빠르게 실행"}</small></div>
-              {!installed && <button onClick={installApp}><Download /> 추가</button>}
+              {!installed ? <button onClick={installApp}><Download />추가</button> : null}
             </li>
           </ol>
-
-          {!session.configured && <p className="connection-note">Spotify 로그인을 준비하고 있습니다. 운영 설정이 완료되면 사용자는 Spotify 승인 한 번으로 바로 시작할 수 있습니다.</p>}
-          <p className="privacy-note">권한을 거부해도 설정에서 나중에 변경할 수 있습니다.</p>
+          <p className="privacy-note">권한은 설정에서 언제든 변경할 수 있습니다.</p>
         </section>
       </main>
     );
   }
-
   return <DiaryHome session={session} onInstall={installApp} installed={installed} />;
 }
 
-function DiaryHome({ session, onInstall, installed }: { session: SessionState; onInstall: () => void; installed: boolean }) {
+function DiaryHome({ session, onInstall, installed }: {
+  session: SessionState;
+  onInstall: () => void;
+  installed: boolean;
+}) {
+  const [activeView, setActiveView] = useState<ActiveView>("today");
   const [composerOpen, setComposerOpen] = useState(false);
   const [note, setNote] = useState("");
   const [mood, setMood] = useState("평온");
-  const [moments, setMoments] = useState(initialMoments);
-  const [toast, setToast] = useState("");
+  const [includeLocation, setIncludeLocation] = useState(true);
+  const [moments, setMoments] = useState<Moment[]>([]);
   const [playback, setPlayback] = useState<TrackState | null>(null);
+  const [displayProgress, setDisplayProgress] = useState(0);
+  const [currentLocation, setCurrentLocation] = useState<CurrentLocation | null>(null);
+  const [toast, setToast] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const pollTimer = useRef<number | null>(null);
+  const progressTimer = useRef<number | null>(null);
+
+  const loadMoments = useCallback(async () => {
+    const range = dayRange();
+    const response = await fetch(`/api/moments?start=${encodeURIComponent(range.start)}&end=${encodeURIComponent(range.end)}`, { cache: "no-store" });
+    if (response.ok) {
+      const payload = await response.json();
+      startTransition(() => setMoments(payload.moments));
+    }
+  }, []);
+
+  const loadPlayback = useCallback(async () => {
+    if (document.visibilityState !== "visible") return;
+    setSyncing(true);
+    try {
+      const response = await fetch("/api/spotify/now", { cache: "no-store" });
+      if (response.ok) {
+        const next = await response.json() as TrackState;
+        setPlayback(next);
+        setDisplayProgress(next.progressMs ?? 0);
+      }
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const draftTimer = window.setTimeout(() => setNote(localStorage.getItem("daytrack-draft") || ""), 0);
-    const loadPlayback = async () => {
-      const response = await fetch("/api/spotify/now", { cache: "no-store" });
-      if (response.ok) setPlayback(await response.json());
+    setNote(localStorage.getItem("daytrack-draft") || "");
+    void Promise.all([loadPlayback(), loadMoments(), getCurrentLocation().then(setCurrentLocation)]);
+  }, [loadMoments, loadPlayback]);
+
+  useEffect(() => {
+    const schedule = () => {
+      if (pollTimer.current) window.clearTimeout(pollTimer.current);
+      pollTimer.current = window.setTimeout(async () => {
+        await loadPlayback();
+        schedule();
+      }, playback?.playing ? 8_000 : 20_000);
     };
-    void loadPlayback();
-    const interval = window.setInterval(loadPlayback, 30_000);
+    schedule();
+    const refresh = () => {
+      if (document.visibilityState === "visible") void Promise.all([loadPlayback(), loadMoments()]);
+    };
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
     return () => {
-      window.clearTimeout(draftTimer);
-      window.clearInterval(interval);
+      if (pollTimer.current) window.clearTimeout(pollTimer.current);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
     };
-  }, []);
+  }, [loadMoments, loadPlayback, playback?.playing]);
+
+  useEffect(() => {
+    if (progressTimer.current) window.clearInterval(progressTimer.current);
+    if (playback?.playing) {
+      progressTimer.current = window.setInterval(() => {
+        setDisplayProgress((value) => Math.min(value + 1_000, playback.track?.durationMs ?? value + 1_000));
+      }, 1_000);
+    }
+    return () => { if (progressTimer.current) window.clearInterval(progressTimer.current); };
+  }, [playback?.playing, playback?.track?.durationMs, playback?.track?.id]);
+
   useEffect(() => { localStorage.setItem("daytrack-draft", note); }, [note]);
 
-  const track = playback?.track || {
-    title: "재생 중인 음악이 없어요",
-    artist: session.user?.displayName || "Spotify",
-    album: "Spotify에서 음악을 재생해 보세요",
-    durationMs: 0,
-  };
-  const progress = track.durationMs ? Math.min(100, ((playback?.progressMs || 0) / track.durationMs) * 100) : 0;
+  const track = playback?.track ?? null;
+  const progress = track?.durationMs ? Math.min(100, (displayProgress / track.durationMs) * 100) : 0;
+  const locatedMoments = useMemo(() => moments.filter((moment) => moment.location), [moments]);
 
-  function saveMoment() {
-    setMoments((items) => [{
-      title: track.title, artist: track.artist,
-      time: new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }), note,
-    }, ...items]);
-    setComposerOpen(false);
-    setNote("");
-    localStorage.removeItem("daytrack-draft");
-    setToast("이 순간을 비공개 일기로 기록했어요.");
-    window.setTimeout(() => setToast(""), 2600);
+  async function saveMoment() {
+    if (!track || saving) {
+      setToast("Spotify에서 음악을 재생한 뒤 기록해 주세요.");
+      return;
+    }
+    setSaving(true);
+    const location = includeLocation ? await getCurrentLocation() : null;
+    if (location) setCurrentLocation(location);
+    const response = await fetch("/api/moments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        note,
+        mood,
+        occurredAt: new Date().toISOString(),
+        location: location ? { ...location, placeLabel: "현재 위치" } : undefined,
+      }),
+    });
+    const payload = await response.json();
+    if (response.ok) {
+      setMoments((items) => [...items, payload.moment]);
+      setComposerOpen(false);
+      setNote("");
+      localStorage.removeItem("daytrack-draft");
+      setToast(location ? "음악과 위치가 지도에 저장됐어요." : "음악 기록이 저장됐어요.");
+    } else {
+      setToast(payload.error || "저장하지 못했습니다.");
+    }
+    setSaving(false);
+    window.setTimeout(() => setToast(""), 2800);
+  }
+
+  async function finalizeDay() {
+    const range = dayRange();
+    const response = await fetch("/api/daily-albums/today", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...range, summary: note || undefined }),
+    });
+    const payload = await response.json();
+    setToast(response.ok ? `${payload.album.moments}개의 순간으로 오늘의 앨범을 정산했어요.` : payload.error);
+    window.setTimeout(() => setToast(""), 3200);
   }
 
   return (
@@ -194,67 +303,157 @@ function DiaryHome({ session, onInstall, installed }: { session: SessionState; o
       <header className="topbar">
         <UserRound size={20} aria-label="프로필" />
         <div className="wordmark serif">DAYTRACK</div>
-        {installed ? <Menu size={20} aria-label="메뉴" /> : <button className="icon-button" onClick={onInstall} aria-label="홈 화면에 추가"><Download size={20} /></button>}
+        {installed ? <button className="icon-button" onClick={() => setActiveView("settings")} aria-label="설정 열기"><Menu size={20} /></button> : <button className="icon-button" onClick={onInstall} aria-label="홈 화면에 추가"><Download size={20} /></button>}
       </header>
-      <p className="date-line">{new Intl.DateTimeFormat("ko-KR", { dateStyle: "full" }).format(new Date())}</p>
-      <div className="today-grid">
-        <section>
-          <div className="cover-wrap" role="img" aria-label={`${track.title} 앨범 표지`}>
-            {track.coverUrl ? <Image className="cover" src={track.coverUrl} alt="" fill sizes="(max-width: 760px) calc(100vw - 40px), 580px" priority /> : <div className="cover-demo" />}
-          </div>
-          <div className="status"><Disc3 size={15} /><span>{playback?.playing ? "Spotify에서 재생 중" : "Spotify 연결됨"}</span><i className="status-dot" /></div>
-          <h1 className="track-title serif">{track.title}</h1>
-          <p className="artist serif">{track.artist}</p>
-          <p className="album serif">{track.album}</p>
-          <div className="progress" style={{ "--progress": `${progress}%` } as React.CSSProperties} />
-          <div className="time"><span>{formatTime(playback?.progressMs)}</span><span>{formatTime(track.durationMs)}</span></div>
-          <div className="actions">
-            <button className="btn btn-primary" onClick={() => setComposerOpen(true)}><Disc3 size={18} />이 순간 기록하기</button>
-            <button className="btn" onClick={() => setToast("오늘의 앨범 초안을 준비했어요.")}><BookOpen size={18} />오늘의 앨범 정리하기</button>
-          </div>
-          <div className="timeline">
-            <div className="timeline-head"><h2>오늘의 리스닝</h2><span className="timeline-time">{moments.length}곡</span></div>
-            {moments.map((item, index) => (
-              <div className="timeline-item" key={`${item.title}-${item.time}-${index}`}>
-                <div className="thumb"><Disc3 size={20} /></div>
-                <div><strong>{item.title}</strong><span>{item.note || item.artist}</span></div>
-                <time className="timeline-time">{item.time}</time>
-              </div>
-            ))}
-          </div>
-        </section>
-        <aside className="side-note">
-          <h2 className="serif">오늘은 어떤 소리로<br />기억될까요?</h2>
-          <p>노래를 중심에 두고, 그때의 장소와 감정을 곁에 적어 둡니다. 자동으로 모인 음악은 후보로만 남고, 당신이 고른 순간만 일기가 됩니다.</p>
-          <div className="stat-row">
-            <div className="stat"><b>{moments.length}</b><span>기록한 트랙</span></div>
-            <div className="stat"><b>1</b><span>기록한 순간</span></div>
-            <div className="stat"><b>{moments[0]?.time}</b><span>최근 기록</span></div>
-          </div>
-          <p className="notice">앱이 열려 있는 동안 Spotify 재생 상태를 확인하며, 다시 접속하면 최근 재생 기록으로 가능한 범위에서 보완합니다.</p>
-        </aside>
-      </div>
-      <nav className="bottom-nav" aria-label="주요 메뉴">
-        <button className="nav-item active"><Disc3 size={19} />오늘</button>
-        <button className="nav-item"><CalendarDays size={19} />달력</button>
-        <button className="nav-item" onClick={() => setComposerOpen(true)} aria-label="새 기록"><span className="record-circle" />기록</button>
-        <button className="nav-item"><Library size={19} />보관함</button>
-        <button className="nav-item"><Settings size={19} />설정</button>
-      </nav>
-      {composerOpen && (
+      {activeView === "today" ? (
+        <TodayView
+          track={track}
+          playback={playback}
+          progress={progress}
+          displayProgress={displayProgress}
+          moments={moments}
+          syncing={syncing}
+          onRecord={() => setComposerOpen(true)}
+          onMap={() => setActiveView("map")}
+        />
+      ) : null}
+      {activeView === "map" ? (
+        <MapTimeline
+          moments={moments}
+          locatedMoments={locatedMoments}
+          currentLocation={currentLocation}
+          onRecord={() => setComposerOpen(true)}
+          onFinalize={finalizeDay}
+        />
+      ) : null}
+      {activeView === "calendar" ? <CalendarView moments={moments} /> : null}
+      {activeView === "archive" ? <ArchiveView moments={moments} /> : null}
+      {activeView === "settings" ? <SettingsView session={session} installed={installed} onInstall={onInstall} /> : null}
+      <BottomNav activeView={activeView} onChange={setActiveView} onRecord={() => setComposerOpen(true)} />
+      {composerOpen ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="composer-title">
           <section className="composer">
             <div className="composer-head"><span>새 기록</span><button className="nav-item" onClick={() => setComposerOpen(false)} aria-label="닫기"><X /></button></div>
-            <h2 id="composer-title" className="serif">지금의 음악을<br />한 장면으로</h2>
-            <div className="timeline-item"><div className="thumb"><Disc3 /></div><div><strong>{track.title}</strong><span>{track.artist} · Spotify</span></div><span /></div>
-            <div className="field"><label htmlFor="moment-time">날짜와 시간</label><input id="moment-time" type="datetime-local" defaultValue={new Date().toISOString().slice(0, 16)} /></div>
-            <div className="field"><label>감정</label><div className="moods">{["평온", "기쁨", "그리움", "몰입"].map((item) => <button className={`mood ${mood === item ? "selected" : ""}`} key={item} onClick={() => setMood(item)}>{item}</button>)}</div></div>
-            <div className="field"><label htmlFor="note">짧은 일기</label><textarea id="note" maxLength={4000} value={note} onChange={(event) => setNote(event.target.value)} placeholder="이 음악과 함께 기억하고 싶은 것을 적어보세요." /></div>
-            <button className="btn btn-primary" onClick={saveMoment}>비공개로 기록 저장</button>
+            <h2 id="composer-title" className="serif">지금의 음악을<br />이 장소에 남겨요</h2>
+            <div className="timeline-item">
+              <div className="thumb">{track?.coverUrl ? <Image src={track.coverUrl} alt="" fill sizes="46px" /> : <Disc3 />}</div>
+              <div><strong>{track?.title ?? "재생 중인 음악 없음"}</strong><span>{track?.artist ?? "Spotify"}</span></div>
+            </div>
+            <div className="field"><label>감정</label><div className="moods">{moodOptions.map((item) => <button className={`mood ${mood === item ? "selected" : ""}`} key={item} onClick={() => setMood(item)}>{item}</button>)}</div></div>
+            <div className="field"><label htmlFor="note">지금의 일기</label><textarea id="note" maxLength={4000} value={note} onChange={(event) => setNote(event.target.value)} placeholder="이 음악과 함께 기억하고 싶은 것을 적어보세요." /></div>
+            <label className="location-toggle">
+              <input type="checkbox" checked={includeLocation} onChange={(event) => setIncludeLocation(event.target.checked)} />
+              <Navigation size={17} /><span>현재 위치를 지도에 함께 저장</span>
+            </label>
+            <button className="btn btn-primary" onClick={saveMoment} disabled={saving}>{saving ? "저장 중…" : "비공개로 기록 저장"}</button>
           </section>
         </div>
-      )}
-      {toast && <div className="toast" role="status">{toast}</div>}
+      ) : null}
+      {toast ? <div className="toast" role="status">{toast}</div> : null}
     </main>
   );
+}
+
+function TodayView({ track, playback, progress, displayProgress, moments, syncing, onRecord, onMap }: {
+  track: TrackState["track"];
+  playback: TrackState | null;
+  progress: number;
+  displayProgress: number;
+  moments: Moment[];
+  syncing: boolean;
+  onRecord: () => void;
+  onMap: () => void;
+}) {
+  return (
+    <>
+      <p className="date-line">{new Intl.DateTimeFormat("ko-KR", { dateStyle: "full" }).format(new Date())}</p>
+      <div className="today-grid">
+        <section>
+          <div className="cover-wrap">
+            {track?.coverUrl ? <Image className="cover" src={track.coverUrl} alt={`${track.title} 앨범 표지`} fill sizes="(max-width: 760px) calc(100vw - 40px), 580px" priority /> : <div className="cover-demo" />}
+          </div>
+          <div className="status"><Disc3 size={15} /><span>{playback?.playing ? "Spotify에서 재생 중" : "Spotify 연결됨"}</span><i className={`status-dot ${syncing ? "syncing" : ""}`} /></div>
+          <h1 className="track-title serif">{track?.title ?? "음악을 재생해 주세요"}</h1>
+          <p className="artist serif">{track?.artist ?? "Spotify"}</p>
+          <p className="album serif">{track?.album ?? "현재 음악이 실시간으로 표시됩니다."}</p>
+          <div className="progress" style={{ "--progress": `${progress}%` } as React.CSSProperties} />
+          <div className="time"><span>{formatTime(displayProgress)}</span><span>{formatTime(track?.durationMs)}</span></div>
+          <div className="actions">
+            <button className="btn btn-primary" onClick={onRecord}><Disc3 size={18} />이 순간 기록하기</button>
+            <button className="btn" onClick={onMap}><MapIcon size={18} />오늘의 지도 타임라인</button>
+          </div>
+          <MomentList moments={moments} />
+        </section>
+        <aside className="side-note">
+          <h2 className="serif">오늘은 어떤 소리와<br />장소로 기억될까요</h2>
+          <p>기록 버튼을 누르면 음악, 감정, 메모와 현재 위치가 하나의 순간으로 저장됩니다. 하루가 끝나면 지도 위에서 시간순으로 다시 볼 수 있어요.</p>
+          <div className="stat-row">
+            <div className="stat"><b>{moments.length}</b><span>기록한 순간</span></div>
+            <div className="stat"><b>{moments.filter((item) => item.location).length}</b><span>지도 위치</span></div>
+            <div className="stat"><b>{moments.at(-1) ? new Date(moments.at(-1)!.occurredAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : "—"}</b><span>최근 기록</span></div>
+          </div>
+        </aside>
+      </div>
+    </>
+  );
+}
+
+function MapTimeline({ moments, locatedMoments, currentLocation, onRecord, onFinalize }: {
+  moments: Moment[];
+  locatedMoments: Moment[];
+  currentLocation: CurrentLocation | null;
+  onRecord: () => void;
+  onFinalize: () => void;
+}) {
+  return (
+    <section className="map-screen">
+      <div className="view-heading">
+        <div><p>{new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(new Date())}</p><h1 className="serif">하루 지도 타임라인</h1></div>
+        <button className="text-action" onClick={onFinalize}>오늘을 정산하기</button>
+      </div>
+      <div className="map-frame">
+        <DayMap moments={locatedMoments} currentLocation={currentLocation} />
+        {!locatedMoments.length ? <div className="map-empty"><MapIcon /><strong>아직 지도 기록이 없어요</strong><span>음악을 들으며 현재 위치에 첫 순간을 저장해 보세요.</span><button onClick={onRecord}>현재 위치에 저장</button></div> : null}
+      </div>
+      <div className="journey-summary"><strong>{locatedMoments.length}개의 장소</strong><span>{moments.length}개의 음악 기록</span><button onClick={onRecord}><Navigation size={16} />현재 위치에 저장</button></div>
+      <MomentList moments={moments} mapTimeline />
+    </section>
+  );
+}
+
+function MomentList({ moments, mapTimeline = false }: { moments: Moment[]; mapTimeline?: boolean }) {
+  return (
+    <div className={`timeline ${mapTimeline ? "map-timeline" : ""}`}>
+      <div className="timeline-head"><h2>{mapTimeline ? "시간순 음악 여정" : "오늘의 기록"}</h2><span className="timeline-time">{moments.length}곡</span></div>
+      {!moments.length ? <p className="empty-copy">기록한 순간이 여기에 시간순으로 쌓입니다.</p> : null}
+      {moments.map((item, index) => (
+        <article className="timeline-item" key={item.id}>
+          <div className="thumb">{item.coverUrl ? <Image src={item.coverUrl} alt="" fill sizes="46px" /> : <Disc3 size={20} />}</div>
+          <div>
+            <strong>{mapTimeline && item.location ? `${index + 1}. ` : ""}{item.title}</strong>
+            <span>{item.location?.placeLabel || item.note || item.artist}</span>
+          </div>
+          <time className="timeline-time">{new Date(item.occurredAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</time>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function CalendarView({ moments }: { moments: Moment[] }) {
+  const today = new Date();
+  const days = Array.from({ length: new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate() }, (_, index) => index + 1);
+  return <section className="utility-screen"><div className="view-heading"><div><p>{today.getFullYear()}년</p><h1 className="serif">{today.getMonth() + 1}월의 기록</h1></div></div><div className="calendar-grid">{["일","월","화","수","목","금","토"].map((day) => <b key={day}>{day}</b>)}{Array.from({ length: new Date(today.getFullYear(), today.getMonth(), 1).getDay() }, (_, i) => <span key={`blank-${i}`} />)}{days.map((day) => <span className={day === today.getDate() ? "today" : ""} key={day}>{day}{day === today.getDate() && moments.length ? <i /> : null}</span>)}</div><MomentList moments={moments} /></section>;
+}
+
+function ArchiveView({ moments }: { moments: Moment[] }) {
+  return <section className="utility-screen"><div className="view-heading"><div><p>나의 음악 일기</p><h1 className="serif">기록 보관함</h1></div><Archive /></div><MomentList moments={moments} /></section>;
+}
+
+function SettingsView({ session, installed, onInstall }: { session: SessionState; installed: boolean; onInstall: () => void }) {
+  return <section className="utility-screen"><div className="view-heading"><div><p>{session.user?.displayName}</p><h1 className="serif">설정</h1></div><Settings /></div><div className="settings-list"><div><LocateFixed /><span><strong>위치 저장</strong><small>기록할 때마다 선택</small></span><b>수동</b></div><div><Music2 /><span><strong>Spotify 동기화</strong><small>재생 중 8초마다 확인</small></span><b>연결됨</b></div><button onClick={onInstall}><Smartphone /><span><strong>홈 화면 앱</strong><small>{installed ? "설치됨" : "앱처럼 빠르게 실행"}</small></span><b>{installed ? <Check /> : "추가"}</b></button></div></section>;
+}
+
+function BottomNav({ activeView, onChange, onRecord }: { activeView: ActiveView; onChange: (view: ActiveView) => void; onRecord: () => void }) {
+  return <nav className="bottom-nav" aria-label="주요 메뉴"><button className={`nav-item ${activeView === "today" ? "active" : ""}`} onClick={() => onChange("today")}><Disc3 size={19} />오늘</button><button className={`nav-item ${activeView === "calendar" ? "active" : ""}`} onClick={() => onChange("calendar")}><CalendarDays size={19} />달력</button><button className="nav-item" onClick={onRecord} aria-label="새 기록"><span className="record-circle" />기록</button><button className={`nav-item ${activeView === "map" ? "active" : ""}`} onClick={() => onChange("map")}><MapIcon size={19} />지도</button><button className={`nav-item ${activeView === "archive" ? "active" : ""}`} onClick={() => onChange("archive")}><Library size={19} />보관함</button></nav>;
 }

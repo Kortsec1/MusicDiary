@@ -13,13 +13,16 @@ export async function GET() {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
     });
-    if (current.status === 204) return NextResponse.json({ playing: false, track: null });
+    const sampledAt = new Date().toISOString();
+    if (current.status === 204) return NextResponse.json({ playing: false, track: null, sampledAt });
     if (!current.ok) throw new Error(`Spotify playback request failed (${current.status})`);
     const payload = await current.json();
     return NextResponse.json({
       playing: Boolean(payload.is_playing),
       progressMs: payload.progress_ms,
+      sampledAt,
       track: payload.item ? {
+        id: payload.item.id,
         title: payload.item.name,
         artist: payload.item.artists?.map((artist: { name: string }) => artist.name).join(", "),
         album: payload.item.album?.name,
@@ -32,4 +35,3 @@ export async function GET() {
     return NextResponse.json({ error: "Spotify playback unavailable" }, { status: 502 });
   }
 }
-
