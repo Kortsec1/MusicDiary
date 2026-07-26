@@ -2,20 +2,22 @@ import { z } from "zod";
 
 const spotifyTrackSchema = z.object({
   id: z.string(),
-  uri: z.string(),
+  uri: z.string().optional(),
   name: z.string(),
   duration_ms: z.number().int(),
-  explicit: z.boolean(),
-  external_urls: z.object({ spotify: z.string().url() }),
+  explicit: z.boolean().default(false),
+  external_urls: z.object({ spotify: z.string().url().optional() }).optional(),
   album: z.object({
     id: z.string(),
     name: z.string(),
-    album_type: z.string(),
-    release_date: z.string(),
-    images: z.array(z.object({ url: z.string().url(), width: z.number().nullable(), height: z.number().nullable() })),
-    external_urls: z.object({ spotify: z.string().url() }),
+    images: z.array(z.object({ url: z.string().url(), width: z.number().nullable().optional(), height: z.number().nullable().optional() })).default([]),
+    external_urls: z.object({ spotify: z.string().url().optional() }).optional(),
   }),
-  artists: z.array(z.object({ id: z.string(), name: z.string(), external_urls: z.object({ spotify: z.string().url() }) })),
+  artists: z.array(z.object({
+    id: z.string().optional(),
+    name: z.string(),
+    external_urls: z.object({ spotify: z.string().url().optional() }).optional(),
+  })).min(1),
 });
 
 export type NormalizedTrack = {
@@ -36,8 +38,8 @@ export function mapSpotifyTrack(input: unknown): NormalizedTrack {
   return {
     provider: "spotify",
     providerTrackId: track.id,
-    uri: track.uri,
-    externalUrl: track.external_urls.spotify,
+    uri: track.uri ?? `spotify:track:${track.id}`,
+    externalUrl: track.external_urls?.spotify ?? `https://open.spotify.com/track/${track.id}`,
     title: track.name,
     durationMs: track.duration_ms,
     explicit: track.explicit,
@@ -45,9 +47,13 @@ export function mapSpotifyTrack(input: unknown): NormalizedTrack {
       providerAlbumId: track.album.id,
       title: track.album.name,
       coverImageUrl: track.album.images[0]?.url ?? null,
-      externalUrl: track.album.external_urls.spotify,
+      externalUrl: track.album.external_urls?.spotify ?? `https://open.spotify.com/album/${track.album.id}`,
     },
-    artists: track.artists.map((artist) => ({ providerArtistId: artist.id, name: artist.name, externalUrl: artist.external_urls.spotify })),
+    artists: track.artists.map((artist, index) => ({
+      providerArtistId: artist.id ?? `${track.id}:artist:${index}`,
+      name: artist.name,
+      externalUrl: artist.external_urls?.spotify ?? "",
+    })),
     originalMetadataSnapshot: input,
   };
 }

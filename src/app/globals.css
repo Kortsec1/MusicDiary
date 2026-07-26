@@ -127,9 +127,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .map-pin b { transform:rotate(45deg); font-weight:400; }
 .map-attribution { position:absolute; right:4px; bottom:3px; z-index:3; padding:2px 4px; background:rgba(255,255,255,.78); color:#333; font-size:9px; text-decoration:none; }
 .map-loading { height:100%; display:grid; place-content:center; justify-items:center; gap:12px; color:var(--muted); font-size:12px; }
-.map-empty { position:absolute; z-index:500; inset:50% auto auto 50%; transform:translate(-50%,-50%); width:min(86%,330px); padding:24px; display:grid; justify-items:center; gap:9px; text-align:center; background:color-mix(in srgb,var(--paper) 94%,transparent); border:1px solid var(--line); backdrop-filter:blur(8px); }
+.map-empty { margin:14px 24px 0; padding:14px 0; display:grid; grid-template-columns:38px 1fr auto; align-items:center; gap:12px; border-block:1px solid var(--line); }
 .map-empty svg { color:var(--accent); }
-.map-empty span { color:var(--muted); font-size:12px; line-height:1.6; }
+.map-empty span strong,.map-empty span small { display:block; }
+.map-empty span strong { font-size:13px; margin-bottom:4px; }
+.map-empty span small { color:var(--muted); font-size:11px; line-height:1.5; }
 .map-empty button,.journey-summary button { border:0; background:var(--accent); color:white; min-height:42px; padding:0 18px; cursor:pointer; }
 .journey-summary { min-height:66px; display:flex; align-items:center; gap:12px; padding:10px 24px; border-bottom:1px solid var(--line); font-size:12px; }
 .journey-summary span { color:var(--muted); }
@@ -138,6 +140,26 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .empty-copy { margin:20px 0; color:var(--muted); font-size:13px; line-height:1.7; }
 .location-toggle { min-height:50px; display:flex; align-items:center; gap:10px; border-block:1px solid var(--line); color:var(--ink); font-size:13px; cursor:pointer; margin:18px 0; }
 .location-toggle input { accent-color:var(--accent); }
+.photo-field { margin:18px 0; }
+.photo-picker { min-height:76px; display:grid; grid-template-columns:36px 1fr; align-items:center; gap:12px; border:1px dashed var(--line); padding:14px; color:var(--accent); cursor:pointer; }
+.photo-picker input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.photo-picker strong,.photo-picker small { display:block; }
+.photo-picker strong { color:var(--ink); font-size:13px; margin-bottom:5px; }
+.photo-picker small { color:var(--muted); font-size:11px; }
+.photo-preview { position:relative; overflow:hidden; border-radius:4px; background:var(--paper-deep); }
+.photo-preview img { display:block; width:100%; max-height:320px; object-fit:cover; }
+.photo-preview button { position:absolute; right:10px; top:10px; display:flex; align-items:center; gap:5px; border:0; background:rgba(23,23,20,.82); color:white; padding:8px 10px; font-size:11px; cursor:pointer; }
+.moment-card { border-bottom:1px solid var(--line); padding:14px 0; }
+.moment-card.has-photo { margin:16px 0; padding:0; overflow:hidden; border:1px solid var(--line); border-radius:6px; background:color-mix(in srgb,var(--paper) 90%,var(--paper-deep)); box-shadow:0 12px 34px rgba(23,23,20,.08); }
+.moment-photo { aspect-ratio:16/10; overflow:hidden; background:var(--paper-deep); }
+.moment-photo img { width:100%; height:100%; display:block; object-fit:cover; }
+.moment-card-body { display:grid; grid-template-columns:46px minmax(0,1fr) auto; gap:13px; align-items:start; }
+.moment-card.has-photo .moment-card-body { padding:16px; }
+.moment-copy strong,.moment-copy span { display:block; }
+.moment-copy strong { font-size:14px; }
+.moment-copy span { color:var(--muted); font-size:12px; margin-top:3px; }
+.moment-copy p { margin:11px 0 0; color:var(--ink); font:17px/1.6 Georgia,"Noto Serif KR",serif; white-space:pre-wrap; }
+.moment-copy small { display:flex; align-items:center; gap:4px; color:var(--muted); font-size:10px; margin-top:10px; }
 .calendar-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin:24px; border-block:1px solid var(--line); padding:14px 0; }
 .calendar-grid b,.calendar-grid span { min-height:42px; display:grid; place-items:center; position:relative; font-size:12px; font-weight:400; }
 .calendar-grid b { color:var(--muted); font-size:10px; }
@@ -162,6 +184,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .map-frame { height:47vh; min-height:330px; }
   .journey-summary { padding-inline:18px; }
   .journey-summary button { padding-inline:12px; }
+  .map-empty { margin-inline:18px; grid-template-columns:30px 1fr; }
+  .map-empty button { grid-column:1/-1; width:100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -18,6 +18,7 @@ const createMomentSchema = z.object({
     accuracyMeters: z.number().nonnegative().optional(),
     placeLabel: z.string().max(200).optional(),
   }).optional(),
+  trackId: z.string().min(1).max(100).optional(),
 });
 
 type MomentRecord = Prisma.DiaryEntryGetPayload<{
@@ -29,6 +30,7 @@ type MomentRecord = Prisma.DiaryEntryGetPayload<{
         artists: { include: { artist: true } };
       };
     };
+    mediaAssets: true;
   };
 }>;
 
@@ -43,6 +45,12 @@ function serializeMoment(entry: MomentRecord) {
     album: entry.track.album?.title ?? "",
     coverUrl: entry.track.album?.coverImageUrl ?? null,
     spotifyUrl: entry.track.externalUrl,
+    photos: entry.mediaAssets.map((asset) => ({
+      id: asset.id,
+      url: `/api/media/${asset.id}`,
+      width: asset.width,
+      height: asset.height,
+    })),
     location: entry.location ? {
       latitude: Number(entry.location.latitude),
       longitude: Number(entry.location.longitude),
@@ -75,6 +83,7 @@ export async function GET(request: NextRequest) {
           artists: { orderBy: { position: "asc" }, include: { artist: true } },
         },
       },
+      mediaAssets: { where: { mediaType: "IMAGE" }, orderBy: { sortOrder: "asc" } },
     },
     orderBy: { occurredAt: "asc" },
   });
@@ -84,8 +93,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const parsed = createMomentSchema.safeParse(await request.json());
+  const isMultipart = request.headers.get("content-type")?.includes("multipart/form-data");
+  const form = isMultipart ? await request.formData() : null;
+  const rawMoment = form
+    ? JSON.parse(String(form.get("moment") || "{}"))
+    : await request.json();
+  const parsed = createMomentSchema.safeParse(rawMoment);
   if (!parsed.success) return NextResponse.json({ error: "Invalid moment" }, { status: 400 });
+  const photo = form?.get("photo");
+  const maxPhotoBytes = Number(process.env.MAX_MOMENT_PHOTO_BYTES || 3_500_000);
+  if (photo instanceof File && (!photo.type.startsWith("image/") || photo.size > maxPhotoBytes)) {
+    return NextResponse.json({ error: "사진은 3.5MB 이하의 이미지 파일만 저장할 수 있어요." }, { status: 413 });
+  }
 
   try {
     const accessToken = await getSpotifyAccessToken(user.id);
@@ -93,18 +112,26 @@ export async function POST(request: NextRequest) {
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
     });
-    if (spotifyResponse.status === 204) {
-      return NextResponse.json({ error: "현재 재생 중인 음악이 없습니다." }, { status: 409 });
-    }
-    if (!spotifyResponse.ok) {
+    if (!spotifyResponse.ok && spotifyResponse.status !== 204) {
       return NextResponse.json({ error: "Spotify 재생 정보를 가져오지 못했습니다." }, { status: 502 });
     }
-    const playback = await spotifyResponse.json();
-    if (!playback.item) return NextResponse.json({ error: "현재 재생 중인 음악이 없습니다." }, { status: 409 });
+    const playback = spotifyResponse.status === 204 ? {} : await spotifyResponse.json();
+    let spotifyTrack = playback.item;
+    if ((!spotifyTrack || spotifyTrack.type !== "track") && parsed.data.trackId) {
+      const trackResponse = await fetch(`https://api.spotify.com/v1/tracks/${encodeURIComponent(parsed.data.trackId)}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      if (trackResponse.ok) spotifyTrack = await trackResponse.json();
+    }
+    if (!spotifyTrack || spotifyTrack.type === "episode") {
+      return NextResponse.json({ error: "저장할 Spotify 음악을 찾지 못했어요. 음악 화면을 새로고침해 주세요." }, { status: 409 });
+    }
 
     const occurredAt = new Date(parsed.data.occurredAt);
+    const photoBytes = photo instanceof File ? Buffer.from(await photo.arrayBuffer()) : null;
     const entry = await prisma.$transaction(async (tx) => {
-      const track = await persistSpotifyTrack(tx, playback.item);
+      const track = await persistSpotifyTrack(tx, spotifyTrack);
       const location = parsed.data.location ? await tx.locationSnapshot.create({
         data: {
           userId: user.id,
@@ -117,7 +144,7 @@ export async function POST(request: NextRequest) {
         },
       }) : null;
       const estimatedStart = new Date(occurredAt.getTime() - Number(playback.progress_ms ?? 0));
-      const dedupeKey = `${user.id}:${playback.item.id}:${estimatedStart.toISOString()}:manual`;
+      const dedupeKey = `${user.id}:${spotifyTrack.id}:${estimatedStart.toISOString()}:manual`;
       const listeningEvent = await tx.listeningEvent.upsert({
         where: { dedupeKey },
         create: {
@@ -137,7 +164,7 @@ export async function POST(request: NextRequest) {
           isPlaying: Boolean(playback.is_playing),
         },
       });
-      return tx.diaryEntry.create({
+      const diaryEntry = await tx.diaryEntry.create({
         data: {
           userId: user.id,
           trackId: track.id,
@@ -150,19 +177,38 @@ export async function POST(request: NextRequest) {
           locationVisible: Boolean(location),
           layoutConfig: {},
         },
+      });
+      if (photoBytes && photo instanceof File) {
+        await tx.mediaAsset.create({
+          data: {
+            userId: user.id,
+            diaryEntryId: diaryEntry.id,
+            mediaType: "IMAGE",
+            storageProvider: "postgres",
+            storageKey: `${user.id}/${diaryEntry.id}/${crypto.randomUUID()}`,
+            mimeType: photo.type,
+            byteSize: photo.size,
+            data: photoBytes,
+          },
+        });
+      }
+      return tx.diaryEntry.findUniqueOrThrow({
+        where: { id: diaryEntry.id },
         include: {
           location: true,
+          mediaAssets: { where: { mediaType: "IMAGE" }, orderBy: { sortOrder: "asc" } },
           track: {
             include: {
               album: true,
               artists: { orderBy: { position: "asc" }, include: { artist: true } },
             },
           },
-        },
+        }
       });
     });
     return NextResponse.json({ moment: serializeMoment(entry) }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "기록 저장에 실패했습니다." }, { status: 500 });
+  } catch (error) {
+    console.error("moment.create.failed", error);
+    return NextResponse.json({ error: "기록 저장에 실패했어요. 잠시 후 다시 시도해 주세요." }, { status: 500 });
   }
 }

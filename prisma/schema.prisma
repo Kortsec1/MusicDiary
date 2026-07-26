@@ -243,6 +243,7 @@ model MediaAsset {
   height Int?
   durationMs Int?
   thumbnailStorageKey String?
+  data Bytes?
   sortOrder Int @default(0)
   createdAt DateTime @default(now())
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

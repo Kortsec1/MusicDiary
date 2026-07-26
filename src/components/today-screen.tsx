@@ -1,7 +1,8 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect -- Initial client-only session and device state are synchronized after hydration. */
 
 import {
-  Archive, BookOpen, CalendarDays, Check, Disc3, Download, Library,
+  Archive, BookOpen, CalendarDays, Camera, Check, Disc3, Download, Library,
   LocateFixed, Map as MapIcon, Menu, Music2, Navigation, Settings,
   Smartphone, UserRound, X,
 } from "lucide-react";
@@ -34,6 +35,7 @@ type Moment = MapMoment & {
   spotifyUrl: string;
   note: string;
   mood: string | null;
+  photos: Array<{ id: string; url: string; width: number | null; height: number | null }>;
 };
 type InstallPrompt = Event & {
   prompt: () => Promise<void>;
@@ -41,6 +43,19 @@ type InstallPrompt = Event & {
 };
 type ActiveView = "today" | "calendar" | "map" | "archive" | "settings";
 type CurrentLocation = { latitude: number; longitude: number; accuracyMeters?: number };
+
+async function preparePhoto(file: File) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+  if (!blob) throw new Error("사진을 준비하지 못했습니다.");
+  return new File([blob], `${file.name.replace(/\.[^.]+$/, "") || "moment"}.jpg`, { type: "image/jpeg" });
+}
 
 const moodOptions = ["평온", "기쁨", "그리움", "몰입"];
 
@@ -92,8 +107,10 @@ export function TodayScreen() {
   }, []);
 
   useEffect(() => {
-    setPermissionsChecked(localStorage.getItem("daytrack-permissions-checked") === "true");
-    setInstalled(window.matchMedia("(display-mode: standalone)").matches);
+    queueMicrotask(() => {
+      setPermissionsChecked(localStorage.getItem("daytrack-permissions-checked") === "true");
+      setInstalled(window.matchMedia("(display-mode: standalone)").matches);
+    });
     void loadSession();
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js");
     const captureInstall = (event: Event) => {
@@ -178,6 +195,8 @@ function DiaryHome({ session, onInstall, installed }: {
   const [note, setNote] = useState("");
   const [mood, setMood] = useState("평온");
   const [includeLocation, setIncludeLocation] = useState(true);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState("");
   const [moments, setMoments] = useState<Moment[]>([]);
   const [playback, setPlayback] = useState<TrackState | null>(null);
   const [displayProgress, setDisplayProgress] = useState(0);
@@ -213,7 +232,7 @@ function DiaryHome({ session, onInstall, installed }: {
   }, []);
 
   useEffect(() => {
-    setNote(localStorage.getItem("daytrack-draft") || "");
+    queueMicrotask(() => setNote(localStorage.getItem("daytrack-draft") || ""));
     void Promise.all([loadPlayback(), loadMoments(), getCurrentLocation().then(setCurrentLocation)]);
   }, [loadMoments, loadPlayback]);
 
@@ -249,6 +268,7 @@ function DiaryHome({ session, onInstall, installed }: {
   }, [playback?.playing, playback?.track?.durationMs, playback?.track?.id]);
 
   useEffect(() => { localStorage.setItem("daytrack-draft", note); }, [note]);
+  useEffect(() => () => { if (photoPreview) URL.revokeObjectURL(photoPreview); }, [photoPreview]);
 
   const track = playback?.track ?? null;
   const progress = track?.durationMs ? Math.min(100, (displayProgress / track.durationMs) * 100) : 0;
@@ -262,21 +282,28 @@ function DiaryHome({ session, onInstall, installed }: {
     setSaving(true);
     const location = includeLocation ? await getCurrentLocation() : null;
     if (location) setCurrentLocation(location);
+    const moment = {
+      note,
+      mood,
+      trackId: track.id,
+      occurredAt: new Date().toISOString(),
+      location: location ? { ...location, placeLabel: "현재 위치" } : undefined,
+    };
+    const formData = new FormData();
+    formData.set("moment", JSON.stringify(moment));
+    if (photo) formData.set("photo", photo);
     const response = await fetch("/api/moments", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        note,
-        mood,
-        occurredAt: new Date().toISOString(),
-        location: location ? { ...location, placeLabel: "현재 위치" } : undefined,
-      }),
+      body: formData,
     });
     const payload = await response.json();
     if (response.ok) {
       setMoments((items) => [...items, payload.moment]);
       setComposerOpen(false);
       setNote("");
+      setPhoto(null);
+      if (photoPreview) URL.revokeObjectURL(photoPreview);
+      setPhotoPreview("");
       localStorage.removeItem("daytrack-draft");
       setToast(location ? "음악과 위치가 지도에 저장됐어요." : "음악 기록이 저장됐어요.");
     } else {
@@ -341,6 +368,37 @@ function DiaryHome({ session, onInstall, installed }: {
             </div>
             <div className="field"><label>감정</label><div className="moods">{moodOptions.map((item) => <button className={`mood ${mood === item ? "selected" : ""}`} key={item} onClick={() => setMood(item)}>{item}</button>)}</div></div>
             <div className="field"><label htmlFor="note">지금의 일기</label><textarea id="note" maxLength={4000} value={note} onChange={(event) => setNote(event.target.value)} placeholder="이 음악과 함께 기억하고 싶은 것을 적어보세요." /></div>
+            <div className="photo-field">
+              {photoPreview ? (
+                <div className="photo-preview">
+                  {/* A local object URL is intentionally used for the unsaved preview. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photoPreview} alt="선택한 순간 사진 미리보기" />
+                  <button type="button" onClick={() => { URL.revokeObjectURL(photoPreview); setPhotoPreview(""); setPhoto(null); }}><X size={16} />사진 빼기</button>
+                </div>
+              ) : (
+                <label className="photo-picker">
+                  <Camera size={20} />
+                  <span><strong>사진 한 장 추가</strong><small>카메라로 찍거나 보관함에서 선택하세요</small></span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={async (event) => {
+                      const selected = event.target.files?.[0];
+                      if (!selected) return;
+                      try {
+                        const prepared = await preparePhoto(selected);
+                        setPhoto(prepared);
+                        setPhotoPreview(URL.createObjectURL(prepared));
+                      } catch {
+                        setToast("사진을 준비하지 못했어요.");
+                      }
+                    }}
+                  />
+                </label>
+              )}
+            </div>
             <label className="location-toggle">
               <input type="checkbox" checked={includeLocation} onChange={(event) => setIncludeLocation(event.target.checked)} />
               <Navigation size={17} /><span>현재 위치를 지도에 함께 저장</span>
@@ -413,8 +471,8 @@ function MapTimeline({ moments, locatedMoments, currentLocation, onRecord, onFin
       </div>
       <div className="map-frame">
         <DayMap moments={locatedMoments} currentLocation={currentLocation} />
-        {!locatedMoments.length ? <div className="map-empty"><MapIcon /><strong>아직 지도 기록이 없어요</strong><span>음악을 들으며 현재 위치에 첫 순간을 저장해 보세요.</span><button onClick={onRecord}>현재 위치에 저장</button></div> : null}
       </div>
+      {!locatedMoments.length ? <div className="map-empty"><MapIcon /><span><strong>아직 지도 기록이 없어요</strong><small>첫 순간을 저장하면 이곳에 오늘의 동선이 그려져요.</small></span><button onClick={onRecord}>첫 순간 저장</button></div> : null}
       <div className="journey-summary"><strong>{locatedMoments.length}개의 장소</strong><span>{moments.length}개의 음악 기록</span><button onClick={onRecord}><Navigation size={16} />현재 위치에 저장</button></div>
       <MomentList moments={moments} mapTimeline />
     </section>
@@ -427,13 +485,24 @@ function MomentList({ moments, mapTimeline = false }: { moments: Moment[]; mapTi
       <div className="timeline-head"><h2>{mapTimeline ? "시간순 음악 여정" : "오늘의 기록"}</h2><span className="timeline-time">{moments.length}곡</span></div>
       {!moments.length ? <p className="empty-copy">기록한 순간이 여기에 시간순으로 쌓입니다.</p> : null}
       {moments.map((item, index) => (
-        <article className="timeline-item" key={item.id}>
-          <div className="thumb">{item.coverUrl ? <Image src={item.coverUrl} alt="" fill sizes="46px" /> : <Disc3 size={20} />}</div>
-          <div>
-            <strong>{mapTimeline && item.location ? `${index + 1}. ` : ""}{item.title}</strong>
-            <span>{item.location?.placeLabel || item.note || item.artist}</span>
+        <article className={`moment-card ${item.photos?.length ? "has-photo" : ""}`} key={item.id}>
+          {item.photos?.[0] ? (
+            <div className="moment-photo">
+              {/* Authenticated image routes cannot be optimized by the public image optimizer. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={item.photos[0].url} alt={`${item.title} 순간 사진`} />
+            </div>
+          ) : null}
+          <div className="moment-card-body">
+            <div className="thumb">{item.coverUrl ? <Image src={item.coverUrl} alt="" fill sizes="46px" /> : <Disc3 size={20} />}</div>
+            <div className="moment-copy">
+              <strong>{mapTimeline && item.location ? `${index + 1}. ` : ""}{item.title}</strong>
+              <span>{item.artist}</span>
+              {item.note ? <p>{item.note}</p> : null}
+              {item.location ? <small><Navigation size={12} />{item.location.placeLabel || "저장한 위치"}</small> : null}
+            </div>
+            <time className="timeline-time">{new Date(item.occurredAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</time>
           </div>
-          <time className="timeline-time">{new Date(item.occurredAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</time>
         </article>
       ))}
     </div>
