@@ -1,0 +1,12 @@
+{
+  "name": "DAYTRACK — 음악 일기",
+  "short_name": "DAYTRACK",
+  "description": "음악으로 하루를 기록하는 개인 일기",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3efe6",
+  "theme_color": "#8c2f39",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

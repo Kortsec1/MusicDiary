@@ -1,0 +1,296 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AutoCaptureMode {
+  MANUAL
+  SMART
+  FULL
+}
+enum LocationMode {
+  OFF
+  MANUAL
+  SMART
+}
+enum Visibility {
+  PRIVATE
+  LINK
+  FRIENDS
+  PUBLIC
+}
+enum LocationSource {
+  GPS
+  MANUAL
+  REVERSE_GEOCODED
+  ESTIMATED
+}
+enum ListeningSource {
+  AUTO_CURRENT
+  AUTO_RECENT
+  MANUAL_IMPORT
+}
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+enum AlbumStatus {
+  DRAFT
+  FINALIZED
+}
+
+model User {
+  id                    String @id @default(uuid()) @db.Uuid
+  spotifyAccountId      String @unique
+  displayName           String
+  avatarUrl             String?
+  timezone              String @default("Asia/Seoul")
+  autoCaptureMode       AutoCaptureMode @default(SMART)
+  locationMode          LocationMode @default(OFF)
+  dailyAlbumCloseHour   Int @default(22)
+  dailyAlbumCloseMinute Int @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  sessions Session[]
+  spotifyConnection SpotifyConnection?
+  locations LocationSnapshot[]
+  listeningEvents ListeningEvent[]
+  diaryEntries DiaryEntry[]
+  mediaAssets MediaAsset[]
+  dailyAlbums DailyAlbum[]
+  syncState SpotifySyncState?
+}
+
+model Session {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  tokenHash String @unique
+  expiresAt DateTime
+  lastSeenAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, expiresAt])
+}
+
+model SpotifyConnection {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+  encryptedAccessToken String
+  encryptedRefreshToken String
+  accessTokenExpiresAt DateTime
+  grantedScopes String[]
+  connectedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Artist {
+  id String @id @default(uuid()) @db.Uuid
+  provider String
+  providerArtistId String
+  name String
+  externalUrl String?
+  imageUrl String?
+  metadataSnapshot Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tracks TrackArtist[]
+  @@unique([provider, providerArtistId])
+}
+
+model Album {
+  id String @id @default(uuid()) @db.Uuid
+  provider String
+  providerAlbumId String
+  title String
+  albumType String?
+  releaseDate String?
+  coverImageUrl String?
+  externalUrl String?
+  coverFetchedAt DateTime?
+  metadataSnapshot Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tracks Track[]
+  @@unique([provider, providerAlbumId])
+}
+
+model Track {
+  id String @id @default(uuid()) @db.Uuid
+  provider String
+  providerTrackId String
+  albumId String? @db.Uuid
+  uri String
+  externalUrl String
+  title String
+  durationMs Int
+  explicit Boolean @default(false)
+  metadataSnapshot Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  album Album? @relation(fields: [albumId], references: [id], onDelete: SetNull)
+  artists TrackArtist[]
+  listeningEvents ListeningEvent[]
+  diaryEntries DiaryEntry[]
+  dailyAlbumItems DailyAlbumItem[]
+  @@unique([provider, providerTrackId])
+}
+
+model TrackArtist {
+  trackId String @db.Uuid
+  artistId String @db.Uuid
+  position Int
+  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  artist Artist @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  @@id([trackId, artistId])
+  @@unique([trackId, position])
+}
+
+model LocationSnapshot {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  latitude Decimal @db.Decimal(9, 6)
+  longitude Decimal @db.Decimal(9, 6)
+  accuracyMeters Float?
+  placeLabel String?
+  neighborhood String?
+  city String?
+  countryCode String?
+  source LocationSource
+  isEstimated Boolean @default(false)
+  capturedAt DateTime
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listeningEvents ListeningEvent[]
+  diaryEntries DiaryEntry[]
+  @@index([userId, capturedAt])
+}
+
+model ListeningEvent {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  trackId String @db.Uuid
+  locationSnapshotId String? @db.Uuid
+  source ListeningSource
+  playedAt DateTime
+  capturedAt DateTime @default(now())
+  progressMs Int?
+  isPlaying Boolean @default(false)
+  dedupeKey String @unique
+  rawMetadata Json
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track Track @relation(fields: [trackId], references: [id], onDelete: Restrict)
+  location LocationSnapshot? @relation(fields: [locationSnapshotId], references: [id], onDelete: SetNull)
+  diaryEntries DiaryEntry[]
+  dailyAlbumItems DailyAlbumItem[]
+  @@index([userId, playedAt])
+  @@index([userId, trackId])
+  @@index([userId, source])
+}
+
+model DiaryEntry {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  trackId String @db.Uuid
+  sourceListeningEventId String? @db.Uuid
+  locationSnapshotId String? @db.Uuid
+  occurredAt DateTime
+  note String @db.VarChar(4000)
+  mood String? @db.VarChar(40)
+  tags String[]
+  visibility Visibility @default(PRIVATE)
+  isFavorite Boolean @default(false)
+  locationVisible Boolean @default(false)
+  templateId String @default("liner-note")
+  layoutConfig Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track Track @relation(fields: [trackId], references: [id], onDelete: Restrict)
+  sourceListeningEvent ListeningEvent? @relation(fields: [sourceListeningEventId], references: [id], onDelete: SetNull)
+  location LocationSnapshot? @relation(fields: [locationSnapshotId], references: [id], onDelete: SetNull)
+  mediaAssets MediaAsset[]
+  dailyAlbumItems DailyAlbumItem[]
+  coverForAlbums DailyAlbum[] @relation("DailyAlbumCover")
+  @@index([userId, occurredAt])
+  @@index([userId, trackId])
+  @@index([userId, isFavorite])
+}
+
+model MediaAsset {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  diaryEntryId String @db.Uuid
+  mediaType MediaType
+  storageProvider String
+  storageKey String @unique
+  mimeType String
+  byteSize BigInt
+  width Int?
+  height Int?
+  durationMs Int?
+  thumbnailStorageKey String?
+  sortOrder Int @default(0)
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  diaryEntry DiaryEntry @relation(fields: [diaryEntryId], references: [id], onDelete: Cascade)
+}
+
+model DailyAlbum {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  albumDate DateTime @db.Date
+  timezone String
+  title String
+  subtitle String?
+  summary String?
+  coverDiaryEntryId String? @db.Uuid
+  status AlbumStatus @default(DRAFT)
+  themeId String @default("paper")
+  stats Json
+  spotifyPlaylistId String?
+  spotifyPlaylistUrl String?
+  generatedAt DateTime @default(now())
+  finalizedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coverDiaryEntry DiaryEntry? @relation("DailyAlbumCover", fields: [coverDiaryEntryId], references: [id], onDelete: SetNull)
+  items DailyAlbumItem[]
+  @@unique([userId, albumDate])
+}
+
+model DailyAlbumItem {
+  id String @id @default(uuid()) @db.Uuid
+  dailyAlbumId String @db.Uuid
+  trackId String @db.Uuid
+  diaryEntryId String? @db.Uuid
+  listeningEventId String? @db.Uuid
+  position Int
+  caption String?
+  createdAt DateTime @default(now())
+  dailyAlbum DailyAlbum @relation(fields: [dailyAlbumId], references: [id], onDelete: Cascade)
+  track Track @relation(fields: [trackId], references: [id], onDelete: Restrict)
+  diaryEntry DiaryEntry? @relation(fields: [diaryEntryId], references: [id], onDelete: SetNull)
+  listeningEvent ListeningEvent? @relation(fields: [listeningEventId], references: [id], onDelete: SetNull)
+  @@unique([dailyAlbumId, position])
+}
+
+model SpotifySyncState {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+  recentlyPlayedAfterMs BigInt @default(0)
+  lastCurrentTrackId String?
+  currentTrackStartedAt DateTime?
+  lastPollAt DateTime?
+  lastSuccessfulSyncAt DateTime?
+  backoffUntil DateTime?
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
