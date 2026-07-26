@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+
 export type MapMoment = {
   id: string;
   title: string;
@@ -14,73 +16,113 @@ export type MapMoment = {
   } | null;
 };
 
+const SEOUL = { latitude: 37.5665, longitude: 126.978 };
+
 export function DayMap({ moments, currentLocation }: {
   moments: MapMoment[];
   currentLocation?: { latitude: number; longitude: number } | null;
 }) {
-  const located = moments.filter((moment) => moment.location);
-  const points = located.map((moment) => ({
-    latitude: moment.location!.latitude,
-    longitude: moment.location!.longitude,
-  }));
-  if (!points.length && currentLocation) points.push(currentLocation);
-  if (!points.length) points.push({ latitude: 37.5665, longitude: 126.978 });
+  const containerRef = useRef<HTMLDivElement>(null);
+  const vworldKey = process.env.NEXT_PUBLIC_VWORLD_API_KEY;
+  const currentLatitude = currentLocation?.latitude;
+  const currentLongitude = currentLocation?.longitude;
 
-  const zoom = 13;
-  const scale = 2 ** zoom;
-  const toTile = ({ latitude, longitude }: { latitude: number; longitude: number }) => {
-    const sin = Math.sin((latitude * Math.PI) / 180);
-    return {
-      x: ((longitude + 180) / 360) * scale,
-      y: (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale,
-    };
-  };
-  const tiledPoints = points.map(toTile);
-  const centerX = tiledPoints.reduce((sum, point) => sum + point.x, 0) / tiledPoints.length;
-  const centerY = tiledPoints.reduce((sum, point) => sum + point.y, 0) / tiledPoints.length;
-  const leftTile = Math.floor(centerX) - 1;
-  const topTile = Math.floor(centerY) - 1;
-  const projected = located.map((moment) => {
-    const tile = toTile(moment.location!);
-    return {
-      moment,
-      x: ((tile.x - leftTile) / 3) * 100,
-      y: ((tile.y - topTile) / 3) * 100,
-    };
-  });
-  const route = projected.map((point) => `${point.x},${point.y}`).join(" ");
-  const tiles = Array.from({ length: 9 }, (_, index) => ({
-    x: leftTile + (index % 3),
-    y: topTile + Math.floor(index / 3),
-    index,
-  }));
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !vworldKey) return;
+    let disposed = false;
+    let map: import("leaflet").Map | null = null;
 
-  return (
-    <div className="day-map" aria-label="오늘 기록 지도">
-      <div className="map-tile-grid">
-        {tiles.map((tile) => (
-          // OpenStreetMap tiles are map data, not decorative app imagery.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={`${tile.x}-${tile.y}`}
-            src={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`}
-            alt=""
-            onLoad={(event) => { event.currentTarget.style.opacity = "1"; }}
-            onError={(event) => { event.currentTarget.style.visibility = "hidden"; }}
-          />
-        ))}
+    void import("leaflet").then((L) => {
+      if (disposed || !containerRef.current) return;
+      const located = moments.filter((moment) => moment.location);
+      const hasCurrentLocation = currentLatitude !== undefined && currentLongitude !== undefined;
+      const center = hasCurrentLocation
+        ? { latitude: currentLatitude, longitude: currentLongitude }
+        : located.at(-1)?.location ?? SEOUL;
+
+      map = L.map(containerRef.current, {
+        center: [center.latitude, center.longitude],
+        zoom: 15,
+        zoomControl: true,
+        attributionControl: true,
+      });
+      L.tileLayer(
+        `https://api.vworld.kr/req/wmts/1.0.0/${vworldKey}/Base/{z}/{y}/{x}.png`,
+        {
+          minZoom: 6,
+          maxZoom: 19,
+          tileSize: 256,
+          attribution: "© 국토교통부 VWorld",
+        },
+      ).addTo(map);
+
+      const coordinates = located.map((moment) => [
+        moment.location!.latitude,
+        moment.location!.longitude,
+      ] as [number, number]);
+
+      if (coordinates.length > 1) {
+        L.polyline(coordinates, { color: "#8c2f39", weight: 4, opacity: 0.82 }).addTo(map);
+        map.fitBounds(L.latLngBounds(coordinates).pad(0.18), { maxZoom: 16 });
+      }
+
+      located.forEach((moment, index) => {
+        const marker = L.marker(
+          [moment.location!.latitude, moment.location!.longitude],
+          {
+            icon: L.divIcon({
+              className: "daytrack-leaflet-marker",
+              html: `<span><b>${index + 1}</b></span>`,
+              iconSize: [34, 42],
+              iconAnchor: [17, 40],
+              popupAnchor: [0, -36],
+            }),
+          },
+        );
+        const time = new Date(moment.occurredAt).toLocaleTimeString("ko-KR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const popup = document.createElement("div");
+        popup.className = "map-popup";
+        const strong = document.createElement("strong");
+        strong.textContent = moment.title;
+        const artist = document.createElement("span");
+        artist.textContent = moment.artist;
+        const detail = document.createElement("small");
+        detail.textContent = `${moment.location!.placeLabel || "저장한 위치"} · ${time}`;
+        popup.append(strong, artist, detail);
+        marker.bindPopup(popup).addTo(map!);
+      });
+
+      if (hasCurrentLocation) {
+        L.circleMarker([currentLatitude, currentLongitude], {
+          radius: 8,
+          color: "#ffffff",
+          weight: 3,
+          fillColor: "#246bfd",
+          fillOpacity: 1,
+        }).bindTooltip("현재 위치", { direction: "top" }).addTo(map);
+      }
+
+      window.setTimeout(() => map?.invalidateSize(), 0);
+    });
+
+    return () => {
+      disposed = true;
+      map?.remove();
+    };
+  }, [currentLatitude, currentLongitude, moments, vworldKey]);
+
+  if (!vworldKey) {
+    return (
+      <div className="day-map map-unavailable">
+        <strong>한국 지도를 준비 중이에요</strong>
+        <span>VWorld 연결 설정을 확인하고 있습니다.</span>
       </div>
-      <svg className="map-route-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-        {projected.length > 1 ? <polyline points={route} /> : null}
-      </svg>
-      <div className="map-pins" aria-hidden="true">
-        {projected.map(({ moment, x, y }, index) => (
-          <span className="map-pin" style={{ left: `${x}%`, top: `${y}%` }} key={moment.id}>
-            <b>{index + 1}</b>
-          </span>
-        ))}
-      </div>
-      <a className="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
-    </div>
-  );
+    );
+  }
+
+  return <div ref={containerRef} className="day-map" aria-label="오늘 기록 지도" />;
 }

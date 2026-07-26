@@ -1,3 +1,4 @@
+@import "leaflet/dist/leaflet.css";
 @import "tailwindcss";
 
 :root {
@@ -119,13 +120,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .map-screen,.utility-screen { width:min(100%,760px); margin:0 auto; padding-bottom:110px; }
 .map-frame { position:relative; height:min(54vh,480px); min-height:360px; border-bottom:1px solid var(--line); background:var(--paper-deep); }
 .day-map { position:relative; width:100%; height:100%; overflow:hidden; background:var(--paper-deep); }
-.map-tile-grid { position:absolute; inset:0; display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); background-color:#d8d4ca; background-image:linear-gradient(24deg,transparent 46%,rgba(255,255,255,.72) 47%,rgba(255,255,255,.72) 49%,transparent 50%),linear-gradient(118deg,transparent 38%,rgba(255,255,255,.64) 39%,rgba(255,255,255,.64) 41%,transparent 42%),repeating-linear-gradient(0deg,transparent 0 42px,rgba(125,118,106,.18) 43px 44px),repeating-linear-gradient(90deg,transparent 0 56px,rgba(125,118,106,.16) 57px 58px); filter:saturate(.65) sepia(.08) brightness(.94); }
-.map-tile-grid img { width:100%; height:100%; object-fit:fill; display:block; opacity:0; }
-.map-route-overlay,.map-pins { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
-.map-route-overlay polyline { fill:none; stroke:var(--accent); stroke-width:1.2; vector-effect:non-scaling-stroke; stroke-linecap:round; stroke-linejoin:round; }
-.map-pin { position:absolute; width:30px; height:30px; display:grid; place-items:center; border-radius:50% 50% 50% 0; transform:translate(-50%,-88%) rotate(-45deg); background:var(--accent); color:white; border:2px solid var(--paper); box-shadow:0 3px 10px rgba(23,23,20,.25); font:12px Georgia,serif; }
-.map-pin b { transform:rotate(45deg); font-weight:400; }
-.map-attribution { position:absolute; right:4px; bottom:3px; z-index:3; padding:2px 4px; background:rgba(255,255,255,.78); color:#333; font-size:9px; text-decoration:none; }
+.day-map .leaflet-control-attribution { font-size:9px; }
+.day-map .leaflet-control-zoom a { color:#222; }
+.daytrack-leaflet-marker { background:transparent; border:0; }
+.daytrack-leaflet-marker span { width:34px; height:34px; display:grid; place-items:center; border-radius:50% 50% 50% 0; transform:rotate(-45deg); background:var(--accent); color:#fff; border:2px solid #fff; box-shadow:0 4px 12px rgba(23,23,20,.28); font:13px Georgia,serif; }
+.daytrack-leaflet-marker b { transform:rotate(45deg); font-weight:400; }
+.map-popup { min-width:150px; display:grid; gap:3px; font-family:Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
+.map-popup strong { font-size:13px; }
+.map-popup span,.map-popup small { color:#6e6a62; font-size:11px; }
+.map-unavailable { display:grid; place-content:center; justify-items:center; gap:7px; color:var(--muted); }
+.map-unavailable strong { color:var(--ink); font-size:13px; }
+.map-unavailable span { font-size:11px; }
 .map-loading { height:100%; display:grid; place-content:center; justify-items:center; gap:12px; color:var(--muted); font-size:12px; }
 .map-empty { margin:14px 24px 0; padding:14px 0; display:grid; grid-template-columns:38px 1fr auto; align-items:center; gap:12px; border-block:1px solid var(--line); }
 .map-empty svg { color:var(--accent); }
