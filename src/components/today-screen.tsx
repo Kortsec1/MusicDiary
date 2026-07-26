@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Bell, BookOpen, CalendarDays, Check, Disc3, Download, ExternalLink,
+  BookOpen, CalendarDays, Check, Disc3, Download,
   Library, LocateFixed, Menu, Music2, Settings, Smartphone, UserRound, X,
 } from "lucide-react";
 import Image from "next/image";
@@ -125,7 +125,8 @@ export function TodayScreen() {
             <li className={session.connected ? "done" : permissionsChecked ? "active" : ""}>
               <span className="step-icon">{session.connected ? <Check /> : <Music2 />}</span>
               <div><strong>Spotify 연결</strong><small>{session.connected ? `${session.user?.displayName} 계정 연결됨` : "현재 재생 음악과 최근 기록 읽기"}</small></div>
-              {!session.connected && permissionsChecked && session.configured && <a href="/api/auth/spotify">연결하기</a>}
+              {!session.connected && permissionsChecked && session.configured && <a href="/api/auth/spotify">Spotify로 계속하기</a>}
+              {!session.connected && permissionsChecked && !session.configured && <button disabled>연결 준비 중</button>}
             </li>
             <li className={installed ? "done" : ""}>
               <span className="step-icon">{installed ? <Check /> : <Smartphone />}</span>
@@ -134,14 +135,7 @@ export function TodayScreen() {
             </li>
           </ol>
 
-          {!session.configured && permissionsChecked && (
-            <div className="spotify-setup">
-              <strong>Spotify 앱 설정이 필요합니다</strong>
-              <p>Spotify Developer Dashboard에서 앱을 만든 뒤 Redirect URI에 아래 주소를 등록하세요.</p>
-              <code>https://daytrack-nine.vercel.app/api/auth/spotify/callback</code>
-              <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer">Spotify 앱 만들기 <ExternalLink /></a>
-            </div>
-          )}
+          {!session.configured && permissionsChecked && <p className="connection-note">Spotify 연결을 준비하고 있습니다. 앱 운영 설정이 완료되면 사용자는 이 화면에서 한 번의 승인만으로 바로 시작할 수 있습니다.</p>}
           <p className="privacy-note">권한을 거부해도 설정에서 나중에 변경할 수 있습니다.</p>
         </section>
       </main>

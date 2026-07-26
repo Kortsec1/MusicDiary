@@ -101,12 +101,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .setup-list button,.setup-list a { border:0; background:transparent; color:var(--accent); font-weight:600; font-size:12px; text-decoration:none; padding:14px 0 14px 14px; cursor:pointer; display:flex; align-items:center; gap:5px; }
 .setup-list button svg { width:14px; }
 .setup-list button:disabled { opacity:.6; cursor:wait; }
-.spotify-setup { margin-top:22px; padding:18px; background:var(--paper-deep); border-left:3px solid #1ed760; }
-.spotify-setup strong { font-size:14px; }
-.spotify-setup p { color:var(--muted); font-size:12px; line-height:1.6; }
-.spotify-setup code { display:block; font-size:11px; overflow-wrap:anywhere; padding:10px 0; }
-.spotify-setup a { color:var(--ink); font-size:12px; display:inline-flex; gap:6px; align-items:center; }
-.spotify-setup a svg { width:13px; }
+.connection-note { margin:22px 0 0; padding:16px 0; border-bottom:1px solid var(--line); color:var(--muted); font-size:12px; line-height:1.7; }
 .privacy-note { color:var(--muted); text-align:center; font-size:11px; margin-top:24px; }
 .spinner { width:30px; height:30px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
