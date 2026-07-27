@@ -27,7 +27,16 @@ export function CumulativeMosaic({ compact = false }: { compact?: boolean }) {
       seed = (seed * 1664525 + 1013904223) >>> 0;
       return (seed / 4294967296) - .5 || a.firstPlayedAt.localeCompare(b.firstPlayedAt);
     });
-    return shuffled;
+    const gridSize = Math.min(24, Math.max(8, Math.ceil(Math.sqrt(shuffled.length * 1.25))));
+    const filled = [...shuffled];
+    let occupied = shuffled.reduce((sum, album) => sum + (album.count >= 18 ? 9 : album.count >= 7 ? 4 : 1), 0);
+    let index = 0;
+    while (occupied < gridSize * gridSize) {
+      filled.push({ ...shuffled[index % shuffled.length], id: `${shuffled[index % shuffled.length].id}-fill-${index}`, count: 1 });
+      occupied += 1;
+      index += 1;
+    }
+    return filled;
   }, [data]);
   const gridSize = Math.min(24, Math.max(8, Math.ceil(Math.sqrt(tiles.length * 1.25))));
 

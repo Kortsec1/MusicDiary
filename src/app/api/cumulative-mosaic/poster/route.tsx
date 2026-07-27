@@ -41,6 +41,15 @@ export async function GET() {
     for (let row = position.y; row < position.y + span; row += 1) for (let column = position.x; column < position.x + span; column += 1) occupied[row][column] = true;
     placed.push({ ...album, ...position, span });
   });
+  if (source.length) {
+    let fillIndex = 0;
+    for (let y = 0; y < size; y += 1) for (let x = 0; x < size; x += 1) {
+      if (occupied[y][x]) continue;
+      const album = source[fillIndex % source.length];
+      fillIndex += 1;
+      placed.push({ id: `${album.id}-fill-${x}-${y}`, coverUrl: album.coverUrl, x, y, span: 1 });
+    }
+  }
   return new ImageResponse(
     <div style={{ width: "100%", height: "100%", display: "flex", position: "relative", background: "#171714", overflow: "hidden" }}>
       {placed.map((album) => <div key={album.id} style={{ position: "absolute", display: "flex", left: `${album.x * (100 / size)}%`, top: `${album.y * (100 / size)}%`, width: `${album.span * (100 / size)}%`, height: `${album.span * (100 / size)}%`, overflow: "hidden", background: "#171714" }}>
