@@ -54,8 +54,59 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     if (current) current.count += 1;
     else albumMap.set(key, { title: item.albumTitle, coverUrl: item.coverUrl, count: 1 });
   });
-  const albums = [...albumMap.values()].sort((a, b) => b.count - a.count).slice(0, 9);
+  const albums = [...albumMap.values()];
+  const artworkTiles = (() => {
+    if (!albums.length) return [];
+    const size = 12;
+    const occupied = Array.from({ length: size }, () => Array(size).fill(false));
+    let seed = [...recap.date].reduce((value, character) => value * 31 + character.charCodeAt(0), 17) >>> 0;
+    const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const featured = albums.map((album) => ({ ...album, featured: true }));
+    for (let index = featured.length - 1; index > 0; index -= 1) {
+      const swap = Math.floor(random() * (index + 1));
+      [featured[index], featured[swap]] = [featured[swap], featured[index]];
+    }
+    const chronological = recap.items.map((item) =>
+      albums.find((album) => album.title === item.albumTitle && album.coverUrl === item.coverUrl) ?? albums[0]);
+    const source = [...featured, ...Array.from({ length: 96 }, (_, index) => ({ ...chronological[index % chronological.length], featured: false }))];
+    const placed: Array<(typeof source)[number] & { x: number; y: number; span: number }> = [];
+    source.forEach((album) => {
+      let span = album.featured && album.count >= 5 ? 4 : album.featured && album.count >= 2 ? 2 : 1;
+      let position: { x: number; y: number } | null = null;
+      while (!position && span > 0) {
+        for (let y = 0; y <= size - span && !position; y += 1) for (let x = 0; x <= size - span && !position; x += 1) {
+          let free = true;
+          for (let row = y; row < y + span; row += 1) for (let column = x; column < x + span; column += 1) if (occupied[row][column]) free = false;
+          if (free) position = { x, y };
+        }
+        if (!position) span -= 1;
+      }
+      if (!position || !span) return;
+      for (let row = position.y; row < position.y + span; row += 1) for (let column = position.x; column < position.x + span; column += 1) occupied[row][column] = true;
+      placed.push({ ...album, ...position, span });
+    });
+    return placed;
+  })();
   if (new URL(request.url).searchParams.get("variant") === "artwork") {
+    const firstTime = recap.items[0] ? new Date(recap.items[0].occurredAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : "--:--";
+    const lastItem = recap.items.at(-1);
+    const lastTime = lastItem ? new Date(lastItem.occurredAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : "--:--";
+    return new ImageResponse(
+      <div style={{ width:"100%",height:"100%",display:"flex",flexDirection:"column",background:"#f2ecdf",color:"#181714",padding:44,fontFamily:"Pretendard" }}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:17,fontWeight:700,letterSpacing:2}}><span>DAYTRACK · {recap.date.replaceAll("-",".")}</span><span>IN PLAYBACK ORDER · REMIXED</span></div>
+        <div style={{display:"flex",fontSize:55,fontWeight:700,letterSpacing:-4,marginTop:14}}>오늘의 앨범 콜라주</div>
+        <div style={{position:"relative",display:"flex",width:920,height:920,marginTop:24,background:"#181714",overflow:"hidden"}}>
+          {artworkTiles.map((album,index) => <div key={`${album.title}-${index}`} style={{position:"absolute",display:"flex",left:`${album.x*(100/12)}%`,top:`${album.y*(100/12)}%`,width:`${album.span*(100/12)}%`,height:`${album.span*(100/12)}%`,padding:1,overflow:"hidden",background:"#f2ecdf"}}>
+            {album.coverUrl ? <img src={album.coverUrl} alt="" width="100%" height="100%" style={{objectFit:"cover"}} /> : <span style={{margin:"auto",fontSize:11}}>{album.title}</span>}
+          </div>)}
+        </div>
+        <div style={{display:"flex",alignItems:"center",marginTop:18,fontSize:18,fontWeight:700}}><span>{firstTime}</span><div style={{display:"flex",flex:1,height:2,background:"#181714",margin:"0 18px"}}/><span>{lastTime}</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:"auto",color:"#791f2b",fontSize:15,fontWeight:700}}><span>반복해서 들은 앨범은 더 크게, 같은 커버는 리듬처럼.</span><span>Album artwork from Spotify</span></div>
+      </div>,
+      { width:1080,height:1080,headers:{"Content-Disposition":`attachment; filename="daytrack-artwork-${recap.date}.png"`},fonts:[{name:"Pretendard",data:regularFont,weight:400},{name:"Pretendard",data:boldFont,weight:700}] },
+    );
+  }
+  if (new URL(request.url).searchParams.get("variant") === "artwork-legacy") {
     const hero = albums[0];
     const rest = albums.slice(1);
     return new ImageResponse(

@@ -64,8 +64,29 @@ export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, o
       if (current) current.count += 1;
       else grouped.set(key, { title: item.albumTitle, coverUrl: item.coverUrl, count: 1, spotifyUrl: item.spotifyUrl });
     });
-    return [...grouped.values()].sort((a, b) => b.count - a.count).slice(0, 12);
+    return [...grouped.values()];
   }, [recap.items]);
+  const mosaicTiles = useMemo(() => {
+    if (!albums.length) return [];
+    let seed = [...recap.date].reduce((value, character) => value * 31 + character.charCodeAt(0), 17) >>> 0;
+    const random = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const chronological = recap.items.map((item) =>
+      albums.find((entry) => entry.title === item.albumTitle && entry.coverUrl === item.coverUrl)
+      ?? { title: item.albumTitle, coverUrl: item.coverUrl, count: 1, spotifyUrl: item.spotifyUrl });
+    const featured = albums.map((album) => ({ ...album, featured: true }));
+    for (let index = featured.length - 1; index > 0; index -= 1) {
+      const swap = Math.floor(random() * (index + 1));
+      [featured[index], featured[swap]] = [featured[swap], featured[index]];
+    }
+    const fillers = Array.from({ length: 80 }, (_, index) => ({
+      ...chronological[index % chronological.length],
+      featured: false,
+    }));
+    return [...featured, ...fillers];
+  }, [albums, recap.date, recap.items]);
   const dateLabel = new Intl.DateTimeFormat("ko-KR", {
     month: "long", day: "numeric", weekday: "long", timeZone: "UTC",
   }).format(new Date(`${recap.date}T12:00:00Z`));
@@ -110,9 +131,9 @@ export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, o
       <section className="album-mosaic-section">
         <div className="album-mosaic-head"><div><span>LISTENING FREQUENCY</span><h2>오늘의 앨범 모자이크</h2></div>{onSaveArtwork ? <button onClick={onSaveArtwork}><ImageDown />작품 저장</button> : null}</div>
         <div className="album-mosaic" style={{ "--album-count": albums.length } as React.CSSProperties}>
-          {albums.map((album, index) => (
+          {mosaicTiles.map((album, index) => (
             <a
-              className={`album-tile ${index === 0 ? "album-tile-hero" : album.count >= 2 ? "album-tile-medium" : ""}`}
+              className={`album-tile ${album.featured && album.count >= 5 ? "album-tile-hero" : album.featured && album.count >= 2 ? "album-tile-medium" : ""}`}
               href={album.spotifyUrl}
               target="_blank"
               rel="noreferrer"
@@ -123,7 +144,12 @@ export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, o
             </a>
           ))}
         </div>
-        <div className="album-mosaic-legend">
+        <div className="album-mosaic-time">
+          <time>{recap.items[0] ? new Date(recap.items[0].occurredAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : "--:--"}</time>
+          <span>{recap.items.slice(0, 18).map((item) => <i key={item.id} title={item.title} />)}</span>
+          <time>{recap.items.at(-1) ? new Date(recap.items.at(-1)!.occurredAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : "--:--"}</time>
+        </div>
+        <div className="album-mosaic-legend" aria-hidden="true">
           {albums.slice(0, 4).map((album) => <span key={album.title}><b>{album.count}×</b>{album.title}</span>)}
         </div>
         <p>많이 들은 앨범일수록 더 큰 면적을 차지해요. 커버를 누르면 Spotify에서 열립니다.</p>
