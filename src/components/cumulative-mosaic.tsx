@@ -30,8 +30,8 @@ export function CumulativeMosaic({ compact = false }: { compact?: boolean }) {
   }, [data]);
   const gridSize = Math.min(24, Math.max(8, Math.ceil(Math.sqrt(tiles.length * 1.25))));
 
-  if (!data && !failed) return <section className={`cumulative-mosaic ${compact ? "compact" : ""}`}><LoaderCircle className="spin-icon" /><span>나의 모든 앨범을 모으는 중</span></section>;
-  if (failed) return null;
+  if (!data && !failed) return <section className={`cumulative-mosaic cumulative-loading ${compact ? "compact" : ""}`}><LoaderCircle className="spin-icon" /><span>나의 모든 앨범을 모으는 중</span></section>;
+  if (failed) return <section className={`cumulative-mosaic cumulative-error ${compact ? "compact" : ""}`}><Grid3X3 /><div><strong>누적 앨범 작품을 불러오지 못했어요</strong><span>연결을 확인한 뒤 화면을 한 번 새로고침해 주세요.</span></div></section>;
   return <section className={`cumulative-mosaic ${compact ? "compact" : ""}`} aria-label="누적 앨범 모자이크">
     <div className="cumulative-mosaic-head"><div><span>{compact ? "HOME WIDGET" : "LIFELONG LISTENING"}</span><h2>{compact ? "내 앨범의 벽" : "나의 누적 앨범 모자이크"}</h2></div><Grid3X3 /></div>
     <p>{data!.stats.albums ? `${data!.stats.albums}장의 앨범 · ${data!.stats.plays}번의 재생` : "Spotify에서 들은 음악이 쌓이면 이 작품도 함께 자라요."}</p>

@@ -71,6 +71,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .side-note p { color:var(--muted); line-height:1.8; max-width:38ch; }
 .cumulative-mosaic { margin:26px 20px 24px; padding:20px 0 24px; border-block:2px solid var(--ink); }
 .cumulative-mosaic.compact { margin:28px 0 0; padding:18px 0 0; border-top:2px solid var(--ink); border-bottom:0; }
+.cumulative-loading,.cumulative-error { min-height:112px; display:flex; align-items:center; gap:11px; color:var(--muted); font-size:12px; }
+.cumulative-loading > svg,.cumulative-error > svg { flex:0 0 auto; width:24px; color:var(--accent); }
+.cumulative-error div { display:grid; gap:4px; }
+.cumulative-error strong { color:var(--ink); font-size:13px; }
+.cumulative-error span { line-height:1.45; }
+.cumulative-link { border-color:var(--accent); color:var(--accent); }
 .cumulative-mosaic-head { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; }
 .cumulative-mosaic-head > div { min-width:0; }
 .cumulative-mosaic-head span { display:block; color:var(--accent); font:800 9px Arial,sans-serif; letter-spacing:.14em; }
