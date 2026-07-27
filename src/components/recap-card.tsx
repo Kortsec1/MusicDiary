@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock3, Disc3, ImageDown, ListMusic, MapPin, Music2, Repeat2, Share2, Sparkles, X } from "lucide-react";
+import { Clock3, Disc3, ImageDown, ListMusic, LoaderCircle, MapPin, Music2, Repeat2, Share2, Sparkles, X } from "lucide-react";
 import Image from "next/image";
 import { useMemo } from "react";
 import { DayMap } from "@/components/day-map";
@@ -34,7 +34,7 @@ export type Recap = {
   }>;
 };
 
-export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, onSaveArtwork, onPlaylist }: {
+export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, onSaveArtwork, onPlaylist, exporting }: {
   recap: Recap;
   publicToken?: string;
   onClose?: () => void;
@@ -42,6 +42,7 @@ export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, o
   onSaveImage?: () => void;
   onSaveArtwork?: () => void;
   onPlaylist?: () => void;
+  exporting?: "artwork" | "recap" | null;
 }) {
   const located = useMemo(() => recap.items.filter((item) => item.location), [recap.items]);
   const photo = recap.items.find((item) => item.photoAssetId);
@@ -122,7 +123,7 @@ export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, o
         <div><Clock3 /><span>음악이 흐른 시간</span><strong>{story.first && story.last ? `${new Date(story.first.occurredAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} — ${new Date(story.last.occurredAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "오늘"}</strong></div>
       </section>
       <section className="album-mosaic-section">
-        <div className="album-mosaic-head"><div><span>LISTENING FREQUENCY</span><h2>오늘의 앨범 모자이크</h2></div>{onSaveArtwork ? <button onClick={onSaveArtwork}><ImageDown />작품 저장</button> : null}</div>
+        <div className="album-mosaic-head"><div><span>LISTENING FREQUENCY</span><h2>오늘의 앨범 모자이크</h2></div>{onSaveArtwork ? <button onClick={onSaveArtwork} disabled={Boolean(exporting)} aria-busy={exporting === "artwork"}>{exporting === "artwork" ? <><LoaderCircle className="spin-icon" />작품 준비 중</> : <><ImageDown />작품 저장</>}</button> : null}</div>
         <div className="album-mosaic" style={{ "--album-count": albums.length } as React.CSSProperties}>
           {mosaicTiles.map((album, index) => (
             <a
@@ -157,10 +158,11 @@ export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, o
           </div>
         ))}
       </section>
+      {exporting ? <div className="recap-export-status" role="status" aria-live="polite"><LoaderCircle className="spin-icon" /><div><strong>{exporting === "artwork" ? "앨범 콜라주를 작품으로 정리하는 중" : "오늘의 정산 카드를 이미지로 만드는 중"}</strong><span>완성되면 바로 저장 또는 공유할 수 있어요. 이 화면을 그대로 유지해 주세요.</span></div></div> : null}
       {onShare || onSaveImage || onPlaylist ? <div className="recap-actions">
-        {onSaveImage ? <button onClick={onSaveImage}><ImageDown /><span>이미지</span></button> : null}
-        {onPlaylist ? <button onClick={onPlaylist}><ListMusic /><span>Spotify</span></button> : null}
-        {onShare ? <button onClick={onShare}><Share2 /><span>공유</span></button> : null}
+        {onSaveImage ? <button onClick={onSaveImage} disabled={Boolean(exporting)}>{exporting === "recap" ? <LoaderCircle className="spin-icon" /> : <ImageDown />}<span>{exporting === "recap" ? "준비 중" : "이미지"}</span></button> : null}
+        {onPlaylist ? <button onClick={onPlaylist} disabled={Boolean(exporting)}><ListMusic /><span>Spotify</span></button> : null}
+        {onShare ? <button onClick={onShare} disabled={Boolean(exporting)}><Share2 /><span>공유</span></button> : null}
       </div> : null}
       <footer className="recap-brand">DAYTRACK · 나의 하루를 음악으로</footer>
     </article>

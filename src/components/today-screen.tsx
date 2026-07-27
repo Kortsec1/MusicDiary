@@ -213,6 +213,7 @@ function DiaryHome({ session, onInstall, installed }: {
   const [recaps, setRecaps] = useState<Recap[]>([]);
   const [confirmFinalize, setConfirmFinalize] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [exportingImage, setExportingImage] = useState<"artwork" | "recap" | null>(null);
   const [playlistOpen, setPlaylistOpen] = useState(false);
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
   const [playlistBusy, setPlaylistBusy] = useState(false);
@@ -398,31 +399,38 @@ function DiaryHome({ session, onInstall, installed }: {
   }
 
   async function saveRecapImage(variant: "artwork" | "recap" = "recap") {
-    if (!recap) return;
+    if (!recap || exportingImage) return;
+    setExportingImage(variant);
     setToast("공유 이미지를 만들고 있어요…");
-    const response = await fetch(`/api/daily-albums/${recap.id}/poster?variant=${variant}`);
-    if (!response.ok) {
-      setToast("이미지를 만들지 못했어요.");
-      return;
-    }
-    const blob = await response.blob();
-    const file = new File([blob], `daytrack-${variant}-${recap.date}.png`, { type: "image/png" });
-    if (navigator.canShare?.({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: recap.title });
-        setToast("");
+    try {
+      const response = await fetch(`/api/daily-albums/${recap.id}/poster?variant=${variant}`);
+      if (!response.ok) {
+        setToast("이미지를 만들지 못했어요.");
         return;
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
       }
+      const blob = await response.blob();
+      const file = new File([blob], `daytrack-${variant}-${recap.date}.png`, { type: "image/png" });
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: recap.title });
+          setToast("");
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+        }
+      }
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = file.name;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      setToast("이미지를 저장했어요.");
+    } catch {
+      setToast("네트워크가 불안정해 이미지를 만들지 못했어요.");
+    } finally {
+      setExportingImage(null);
     }
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = file.name;
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
-    setToast("이미지를 저장했어요.");
   }
 
   async function openPlaylistPicker() {
@@ -580,10 +588,11 @@ function DiaryHome({ session, onInstall, installed }: {
                 {finalizing ? <><LoaderCircle className="spin-icon" />정산 중…</> : "정산하고 카드 보기"}
               </button>
             </div>
+            {finalizing ? <div className="finalize-progress" role="status" aria-live="polite"><LoaderCircle className="spin-icon" /><div><strong>오늘의 음악을 한 장으로 엮는 중</strong><span>기록, 지도, 앨범 커버를 차례로 정리하고 있어요. 잠시 이 화면을 유지해 주세요.</span></div></div> : null}
           </section>
         </div>
       ) : null}
-      {recap ? <div className="recap-backdrop" role="dialog" aria-modal="true" aria-label="오늘의 정산 카드"><RecapCard recap={recap} onClose={() => setRecap(null)} onShare={shareRecap} onSaveImage={() => saveRecapImage()} onSaveArtwork={() => saveRecapImage("artwork")} onPlaylist={openPlaylistPicker} /></div> : null}
+      {recap ? <div className="recap-backdrop" role="dialog" aria-modal="true" aria-label="오늘의 정산 카드"><RecapCard recap={recap} onClose={() => setRecap(null)} onShare={shareRecap} onSaveImage={() => saveRecapImage()} onSaveArtwork={() => saveRecapImage("artwork")} onPlaylist={openPlaylistPicker} exporting={exportingImage} /></div> : null}
       {playlistOpen ? (
         <div className="confirm-backdrop playlist-backdrop" role="dialog" aria-modal="true" aria-labelledby="playlist-title">
           <section className="playlist-sheet">
