@@ -49,7 +49,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   ]);
   const albumMap = new Map<string, { title: string; coverUrl: string | null; count: number }>();
   recap.items.forEach((item) => {
-    const key = `${item.albumTitle}:${item.coverUrl ?? ""}`;
+    const key = item.albumTitle.trim().toLocaleLowerCase("ko-KR");
     const current = albumMap.get(key);
     if (current) current.count += 1;
     else albumMap.set(key, { title: item.albumTitle, coverUrl: item.coverUrl, count: 1 });
@@ -66,9 +66,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       const swap = Math.floor(random() * (index + 1));
       [featured[index], featured[swap]] = [featured[swap], featured[index]];
     }
-    const chronological = recap.items.map((item) =>
-      albums.find((album) => album.title === item.albumTitle && album.coverUrl === item.coverUrl) ?? albums[0]);
-    const source = [...featured, ...Array.from({ length: 96 }, (_, index) => ({ ...chronological[index % chronological.length], featured: false }))];
+    const source = featured;
     const placed: Array<(typeof source)[number] & { x: number; y: number; span: number }> = [];
     source.forEach((album) => {
       let span = album.featured && album.count >= 4 ? 4 : album.featured && album.count >= 2 ? 2 : 1;

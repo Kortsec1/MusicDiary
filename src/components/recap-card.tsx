@@ -59,7 +59,7 @@ export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, o
   const albums = useMemo(() => {
     const grouped = new Map<string, { title: string; coverUrl: string | null; count: number; spotifyUrl: string }>();
     recap.items.forEach((item) => {
-      const key = `${item.albumTitle}:${item.coverUrl ?? ""}`;
+      const key = item.albumTitle.trim().toLocaleLowerCase("ko-KR");
       const current = grouped.get(key);
       if (current) current.count += 1;
       else grouped.set(key, { title: item.albumTitle, coverUrl: item.coverUrl, count: 1, spotifyUrl: item.spotifyUrl });
@@ -73,20 +73,13 @@ export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, o
       seed = (seed * 1664525 + 1013904223) >>> 0;
       return seed / 4294967296;
     };
-    const chronological = recap.items.map((item) =>
-      albums.find((entry) => entry.title === item.albumTitle && entry.coverUrl === item.coverUrl)
-      ?? { title: item.albumTitle, coverUrl: item.coverUrl, count: 1, spotifyUrl: item.spotifyUrl });
     const featured = albums.map((album) => ({ ...album, featured: true }));
     for (let index = featured.length - 1; index > 0; index -= 1) {
       const swap = Math.floor(random() * (index + 1));
       [featured[index], featured[swap]] = [featured[swap], featured[index]];
     }
-    const fillers = Array.from({ length: 80 }, (_, index) => ({
-      ...chronological[index % chronological.length],
-      featured: false,
-    }));
-    return [...featured, ...fillers];
-  }, [albums, recap.date, recap.items]);
+    return featured;
+  }, [albums, recap.date]);
   const dateLabel = new Intl.DateTimeFormat("ko-KR", {
     month: "long", day: "numeric", weekday: "long", timeZone: "UTC",
   }).format(new Date(`${recap.date}T12:00:00Z`));

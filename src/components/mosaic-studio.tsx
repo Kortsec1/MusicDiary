@@ -61,7 +61,7 @@ export function MosaicStudio({ recap, onBusyChange }: { recap: Recap | null; onB
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [source, setSource] = useState("");
   const [sourceKey, setSourceKey] = useState("");
-  const [density, setDensity] = useState<48 | 72 | 96>(72);
+  const [density, setDensity] = useState<96 | 128>(96);
   const [balance, setBalance] = useState<Balance>("photo");
   const [weighted, setWeighted] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -108,7 +108,7 @@ export function MosaicStudio({ recap, onBusyChange }: { recap: Recap | null; onB
     } finally { URL.revokeObjectURL(url); }
   }, [sourceKey]);
 
-  async function render(size = 1200, persist = true, extraCovers: Cover[] = []) {
+  async function render(size = density === 128 ? 1536 : 1200, persist = true, extraCovers: Cover[] = []) {
     if (!source) return setNotice("먼저 위에서 사진을 선택해 주세요.");
     if (!covers.length) return setNotice("하루 정산을 먼저 완료하면 오늘 들은 앨범으로 만들 수 있어요.");
     setBusy(true); setReady(false); setNotice("이 화면을 그대로 두세요. 앨범 커버를 준비하고 있어요."); setProgress(2);
@@ -206,7 +206,7 @@ export function MosaicStudio({ recap, onBusyChange }: { recap: Recap | null; onB
     {hasCache && !ready && !busy ? <button type="button" className="studio-restore" onClick={loadCached}><RotateCcw />이 사진의 저장된 결과 바로 불러오기</button> : null}
     <div className={`studio-canvas-wrap ${ready ? "ready" : ""}`}><canvas ref={canvasRef} />{!ready && source ? <img src={source} alt="선택한 원본" /> : null}{!source ? <div className="studio-placeholder"><Camera /><strong>위에서 사진을 먼저 선택해 주세요</strong></div> : null}{busy ? <div className="studio-progress"><LoaderCircle /><b>{progress}%</b><strong>{progress < 20 ? "앨범 커버 준비 중" : progress < 93 ? "사진의 명암을 따라 배치 중" : "결과 자동 저장 중"}</strong><span>다른 메뉴는 완성될 때까지 잠시 잠겨요</span><i><em style={{ width: `${progress}%` }} /></i></div> : null}{ready && !busy ? <span className="studio-finished"><Sparkles /> 자동 저장됨</span> : null}</div>
     <div className="studio-step compact"><b>02</b><div><strong>표현 방식</strong><small>‘사진 선명’을 추천해요</small></div></div>
-    <div className="studio-controls"><div><label>디테일</label><div className="studio-segments studio-density"><button type="button" disabled={busy} className={density === 48 ? "active" : ""} onClick={() => setDensity(48)}>빠르게 · 48</button><button type="button" disabled={busy} className={density === 72 ? "active" : ""} onClick={() => setDensity(72)}>정교하게 · 72</button><button type="button" disabled={busy} className={density === 96 ? "active" : ""} onClick={() => setDensity(96)}>아카이브 · 96</button></div></div><div><label>원본 강조</label><div className="studio-segments three">{([["photo","사진 선명"],["balanced","균형"],["album","앨범 강조"]] as const).map(([value,label]) => <button type="button" disabled={busy} aria-pressed={balance === value} className={balance === value ? "active" : ""} onClick={() => setBalance(value)} key={value}>{label}{balance === value ? <Check /> : null}</button>)}</div></div><label className="studio-switch"><span><strong>재생 빈도 반영</strong><small>자주 들은 앨범을 더 많이 사용해요</small></span><input disabled={busy} type="checkbox" checked={weighted} onChange={(event) => setWeighted(event.target.checked)} /></label></div>
+    <div className="studio-controls"><div><label>디테일</label><div className="studio-segments studio-density"><button type="button" disabled={busy} className={density === 96 ? "active" : ""} onClick={() => setDensity(96)}>정교 · 96</button><button type="button" disabled={busy} className={density === 128 ? "active" : ""} onClick={() => setDensity(128)}>뮤지엄 · 128</button></div></div><div><label>원본 강조</label><div className="studio-segments three">{([["photo","사진 선명"],["balanced","균형"],["album","앨범 강조"]] as const).map(([value,label]) => <button type="button" disabled={busy} aria-pressed={balance === value} className={balance === value ? "active" : ""} onClick={() => setBalance(value)} key={value}>{label}{balance === value ? <Check /> : null}</button>)}</div></div><label className="studio-switch"><span><strong>재생 빈도 반영</strong><small>자주 들은 앨범을 더 많이 사용해요</small></span><input disabled={busy} type="checkbox" checked={weighted} onChange={(event) => setWeighted(event.target.checked)} /></label></div>
     <p className="studio-privacy"><LockKeyhole /> 원본과 결과는 이 기기의 DAYTRACK 저장소에서만 처리돼요.</p>{notice ? <p className="studio-message" role="status">{notice}</p> : null}
     <button type="button" className="studio-generate" onClick={startGeneration} disabled={busy || !source || supplementalBusy}><Sparkles />{busy || supplementalBusy ? `${progress}% · 사진을 만드는 중` : ready ? "현재 설정으로 다시 만들기" : source ? "이 사진으로 모자이크 만들기" : "먼저 사진을 선택해 주세요"}</button>
     {ready && !busy ? <div className="studio-result-actions"><button type="button" onClick={exportImage}><Download />2048px 이미지 저장</button><button type="button" onClick={exportImage}><Share2 />공유</button></div> : null}
