@@ -1,4 +1,4 @@
-const CACHE = "daytrack-v1";
+const CACHE = "daytrack-v2";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -25,4 +25,3 @@ self.addEventListener("fetch", (event) => {
       .catch(() => caches.match(event.request).then((response) => response || caches.match("/"))),
   );
 });
-

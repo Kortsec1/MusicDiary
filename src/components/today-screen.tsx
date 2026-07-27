@@ -116,7 +116,10 @@ export function TodayScreen() {
       setInstalled(window.matchMedia("(display-mode: standalone)").matches);
     });
     void loadSession();
-    if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js");
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" })
+        .then((registration) => registration.update());
+    }
     const captureInstall = (event: Event) => {
       event.preventDefault();
       setInstallPrompt(event as InstallPrompt);
