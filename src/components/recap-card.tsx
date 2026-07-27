@@ -91,10 +91,11 @@ export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, o
     : null;
 
   return (
+    <>
     <article className="recap-sheet">
       <header className="recap-head">
         <div><p>{dateLabel} · DAY / TRACK</p><h1>{recap.title}</h1><span className="recap-issue">ISSUE {recap.date.replaceAll("-", ".")}</span></div>
-        {onClose ? <button className="recap-close" onClick={onClose} aria-label="정산 카드 닫기"><X /></button> : null}
+        {onClose ? <button className="recap-close" onClick={onClose} disabled={Boolean(exporting)} aria-label="정산 카드 닫기"><X /></button> : null}
       </header>
       <div className="recap-map"><DayMap moments={located} /></div>
       <section className="keepsake-card">
@@ -158,7 +159,6 @@ export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, o
           </div>
         ))}
       </section>
-      {exporting ? <div className="recap-export-status" role="status" aria-live="polite"><LoaderCircle className="spin-icon" /><div><strong>{exporting === "artwork" ? "앨범 콜라주를 작품으로 정리하는 중" : "오늘의 정산 카드를 이미지로 만드는 중"}</strong><span>완성되면 바로 저장 또는 공유할 수 있어요. 이 화면을 그대로 유지해 주세요.</span></div></div> : null}
       {onShare || onSaveImage || onPlaylist ? <div className="recap-actions">
         {onSaveImage ? <button onClick={onSaveImage} disabled={Boolean(exporting)}>{exporting === "recap" ? <LoaderCircle className="spin-icon" /> : <ImageDown />}<span>{exporting === "recap" ? "준비 중" : "이미지"}</span></button> : null}
         {onPlaylist ? <button onClick={onPlaylist} disabled={Boolean(exporting)}><ListMusic /><span>Spotify</span></button> : null}
@@ -166,5 +166,7 @@ export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, o
       </div> : null}
       <footer className="recap-brand">DAYTRACK · 나의 하루를 음악으로</footer>
     </article>
+    {exporting ? <div className="recap-export-lock" role="alert" aria-live="assertive"><div><LoaderCircle className="spin-icon" /><span>DAYTRACK EXPORT</span><strong>{exporting === "artwork" ? "앨범 커버를 한 장의 작품으로 배치하는 중" : "오늘의 사운드트랙을 이미지로 조판하는 중"}</strong><p>원본 앨범 표지를 유지한 채 고해상도 이미지를 준비하고 있어요.<br />완성될 때까지 이 화면을 잠시 유지해 주세요.</p></div></div> : null}
+    </>
   );
 }

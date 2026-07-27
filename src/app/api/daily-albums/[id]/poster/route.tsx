@@ -90,16 +90,16 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const lastItem = recap.items.at(-1);
     const lastTime = lastItem ? new Date(lastItem.occurredAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : "--:--";
     return new ImageResponse(
-      <div style={{ width:"100%",height:"100%",display:"flex",flexDirection:"column",background:"#f2ecdf",color:"#181714",padding:44,fontFamily:"Pretendard" }}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:17,fontWeight:700,letterSpacing:2}}><span>DAYTRACK · {recap.date.replaceAll("-",".")}</span><span>IN PLAYBACK ORDER · REMIXED</span></div>
-        <div style={{display:"flex",fontSize:55,fontWeight:700,letterSpacing:-4,marginTop:14}}>오늘의 앨범 콜라주</div>
-        <div style={{position:"relative",display:"flex",width:920,height:920,marginTop:24,background:"#181714",overflow:"hidden"}}>
+      <div style={{ width:"100%",height:"100%",display:"flex",flexDirection:"column",background:"#f2ecdf",color:"#181714",padding:36,fontFamily:"Pretendard" }}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:14,fontWeight:700,letterSpacing:1.4}}><span>DAYTRACK · {recap.date.replaceAll("-",".")}</span><span>IN PLAYBACK ORDER · REMIXED</span></div>
+        <div style={{display:"flex",fontSize:46,fontWeight:700,letterSpacing:-3,marginTop:8}}>오늘의 앨범 콜라주</div>
+        <div style={{position:"relative",display:"flex",width:828,height:828,marginTop:16,background:"#181714",overflow:"hidden"}}>
           {artworkTiles.map((album,index) => <div key={`${album.title}-${index}`} style={{position:"absolute",display:"flex",left:`${album.x*(100/12)}%`,top:`${album.y*(100/12)}%`,width:`${album.span*(100/12)}%`,height:`${album.span*(100/12)}%`,padding:1,overflow:"hidden",background:"#f2ecdf"}}>
             {album.coverUrl ? <img src={album.coverUrl} alt="" width="100%" height="100%" style={{objectFit:"contain",background:"#171714"}} /> : <span style={{margin:"auto",fontSize:11}}>{album.title}</span>}
           </div>)}
         </div>
-        <div style={{display:"flex",alignItems:"center",marginTop:18,fontSize:18,fontWeight:700}}><span>{firstTime}</span><div style={{display:"flex",flex:1,height:2,background:"#181714",margin:"0 18px"}}/><span>{lastTime}</span></div>
-        <div style={{display:"flex",justifyContent:"space-between",marginTop:"auto",color:"#791f2b",fontSize:15,fontWeight:700}}><span>반복해서 들은 앨범은 더 크게, 커버는 한 번만 남겼어요.</span><span>Album artwork from Spotify</span></div>
+        <div style={{display:"flex",alignItems:"center",marginTop:13,fontSize:15,fontWeight:700}}><span>{firstTime}</span><div style={{display:"flex",flex:1,height:2,background:"#181714",margin:"0 14px"}}/><span>{lastTime}</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:"auto",color:"#791f2b",fontSize:12,fontWeight:700}}><span>반복해서 들은 앨범은 더 크게, 커버는 한 번만 남겼어요.</span><span>Album artwork from Spotify</span></div>
       </div>,
       { width:1080,height:1080,headers:{"Content-Disposition":`attachment; filename="daytrack-artwork-${recap.date}.png"`},fonts:[{name:"Pretendard",data:regularFont,weight:400},{name:"Pretendard",data:boldFont,weight:700}] },
     );
@@ -198,7 +198,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     ),
     {
       width: 1080,
-      height: 1350,
+      height: 1500,
       headers: { "Content-Disposition": `attachment; filename="daytrack-${recap.date}.png"` },
       fonts: [
         { name: "Pretendard", data: regularFont, weight: 400 },

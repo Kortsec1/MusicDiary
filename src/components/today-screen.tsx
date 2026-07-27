@@ -11,6 +11,7 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import { DayMap, type MapMoment } from "@/components/day-map";
 import { RecapCard, type Recap } from "@/components/recap-card";
 import { MosaicStudio } from "@/components/mosaic-studio";
+import { CumulativeMosaic } from "@/components/cumulative-mosaic";
 
 type SessionState = {
   connected: boolean;
@@ -668,6 +669,7 @@ function TodayView({ track, playback, progress, displayProgress, moments, syncin
             <div className="stat"><b>{moments.filter((item) => item.location).length}</b><span>지도 위치</span></div>
             <div className="stat"><b>{moments.at(-1) ? new Date(moments.at(-1)!.occurredAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : "—"}</b><span>최근 기록</span></div>
           </div>
+          <CumulativeMosaic compact />
         </aside>
       </div>
     </>
@@ -740,6 +742,7 @@ function ArchiveView({ recaps, onOpen }: { recaps: Recap[]; onOpen: (recap: Reca
   return (
     <section className="utility-screen archive-screen">
       <div className="view-heading"><div><p>완료된 하루는 여기에</p><h1 className="serif">정산 카드 보관함</h1></div><Archive /></div>
+      <CumulativeMosaic />
       {!recaps.length ? (
         <div className="archive-empty"><BookOpen /><strong>아직 완성된 카드가 없어요</strong><p>지도에서 ‘오늘을 정산하기’를 누르면 이곳에 계속 보관됩니다.</p></div>
       ) : (
