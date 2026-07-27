@@ -497,7 +497,6 @@ function DiaryHome({ session, onInstall, installed }: {
           syncing={syncing}
           onRecord={() => setComposerOpen(true)}
           onMap={() => setActiveView("map")}
-          onArchive={() => setActiveView("archive")}
         />
       ) : null}
       {activeView === "map" ? (
@@ -635,7 +634,7 @@ function DiaryHome({ session, onInstall, installed }: {
   );
 }
 
-function TodayView({ track, playback, progress, displayProgress, moments, syncing, onRecord, onMap, onArchive }: {
+function TodayView({ track, playback, progress, displayProgress, moments, syncing, onRecord, onMap }: {
   track: TrackState["track"];
   playback: TrackState | null;
   progress: number;
@@ -644,7 +643,6 @@ function TodayView({ track, playback, progress, displayProgress, moments, syncin
   syncing: boolean;
   onRecord: () => void;
   onMap: () => void;
-  onArchive: () => void;
 }) {
   return (
     <>
@@ -663,9 +661,7 @@ function TodayView({ track, playback, progress, displayProgress, moments, syncin
           <div className="actions">
             <button className="btn btn-primary" onClick={onRecord}><Disc3 size={18} />이 순간 기록하기</button>
             <button className="btn" onClick={onMap}><MapIcon size={18} />오늘의 지도 타임라인</button>
-            <button className="btn cumulative-link" onClick={onArchive}><Grid3X3 size={18} />나의 누적 앨범 작품</button>
           </div>
-          <CumulativeMosaic compact />
           <MomentList moments={moments} />
         </section>
         <aside className="side-note">
