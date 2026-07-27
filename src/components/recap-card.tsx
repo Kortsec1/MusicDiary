@@ -133,7 +133,7 @@ export function RecapCard({ recap, publicToken, onClose, onShare, onSaveImage, o
         <div className="album-mosaic" style={{ "--album-count": albums.length } as React.CSSProperties}>
           {mosaicTiles.map((album, index) => (
             <a
-              className={`album-tile ${album.featured && album.count >= 5 ? "album-tile-hero" : album.featured && album.count >= 2 ? "album-tile-medium" : ""}`}
+              className={`album-tile ${album.featured && album.count >= 4 ? "album-tile-hero" : album.featured && album.count >= 2 ? "album-tile-medium" : ""}`}
               href={album.spotifyUrl}
               target="_blank"
               rel="noreferrer"

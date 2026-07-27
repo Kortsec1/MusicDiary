@@ -11,6 +11,7 @@ type Cover = { url: string; count: number; title?: string; artist?: string; key?
 type Tile = { key: string; count: number; image: HTMLImageElement; rgb: number[]; luminance: number };
 type GalleryItem = { id: string; sourceKey: string; blob: Blob; createdAt: number };
 const DB_NAME = "daytrack-mosaic", STORE = "renders", GALLERY = "gallery";
+const coverMemory = new Map<string, Tile>();
 const luminance = (rgb: number[]) => .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2];
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -60,7 +61,7 @@ export function MosaicStudio({ recap, onBusyChange }: { recap: Recap | null; onB
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [source, setSource] = useState("");
   const [sourceKey, setSourceKey] = useState("");
-  const [density, setDensity] = useState<48 | 72>(72);
+  const [density, setDensity] = useState<48 | 72 | 96>(72);
   const [balance, setBalance] = useState<Balance>("photo");
   const [weighted, setWeighted] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -114,13 +115,19 @@ export function MosaicStudio({ recap, onBusyChange }: { recap: Recap | null; onB
     try {
       const photo = await imageFrom(source), tiles: Tile[] = [];
       const renderCovers = [...covers, ...extraCovers.filter((cover) => !covers.some((current) => current.url === cover.url))];
-      for (let i = 0; i < renderCovers.length; i++) {
+      let loaded = 0;
+      const candidates = renderCovers.slice(0, 42);
+      const loadedTiles = await Promise.all(candidates.map(async (cover) => {
+        const key = cover.key ?? cover.url;
+        const cachedTile = coverMemory.get(key);
+        if (cachedTile) { loaded += 1; setProgress(5 + Math.round(loaded / candidates.length * 15)); return { ...cachedTile, count: cover.count }; }
         try {
-          const image = await imageFrom(`/api/spotify/cover?url=${encodeURIComponent(renderCovers[i].url)}`);
-          const rgb = colorOf(image); tiles.push({ key: renderCovers[i].key ?? renderCovers[i].url, count: renderCovers[i].count, image, rgb, luminance: luminance(rgb) });
-        } catch {}
-        setProgress(5 + Math.round((i + 1) / renderCovers.length * 15));
-      }
+          const image = await imageFrom(`/api/spotify/cover?url=${encodeURIComponent(cover.url)}`);
+          const rgb = colorOf(image); const tile = { key, count: cover.count, image, rgb, luminance: luminance(rgb) };
+          coverMemory.set(key, tile); return tile;
+        } catch { return null; } finally { loaded += 1; setProgress(5 + Math.round(loaded / candidates.length * 15)); }
+      }));
+      tiles.push(...loadedTiles.filter((tile): tile is Tile => tile !== null));
       if (!tiles.length) throw new Error("앨범 커버를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
       const sampler = document.createElement("canvas"); sampler.width = sampler.height = density;
       const sampleCtx = sampler.getContext("2d", { willReadFrequently: true })!; drawSquare(sampleCtx, photo, density);
@@ -195,11 +202,11 @@ export function MosaicStudio({ recap, onBusyChange }: { recap: Recap | null; onB
     <div className="studio-guide"><b>{busy ? "만드는 중" : ready ? "완성" : source ? "설정하기" : "사진 선택"}</b><span>{busy ? "앱을 닫지 말고 잠시 기다려 주세요." : ready ? "자동 저장됨 · 다시 만들거나 이미지로 내보낼 수 있어요." : "① 사진 선택 → ② 표현 방식 선택 → ③ 만들기"}</span></div>
     <div className="studio-step"><b>01</b><div><strong>사진 고르기</strong><small>선택한 사진에는 체크 표시가 나타나요</small></div></div>
     <div className="studio-photos">{photos.slice(0, 8).map((photo) => <button type="button" aria-pressed={source === photo.url} className={source === photo.url ? "selected" : ""} key={photo.id} disabled={busy} onClick={() => selectPhoto(photo)}><img src={photo.url} alt={photo.trackTitle} /><span>{source === photo.url ? "선택됨" : "선택"}</span>{source === photo.url ? <Check /> : null}</button>)}<label className={`studio-upload ${busy ? "disabled" : ""}`}><ImagePlus /><span>새 사진 올리기</span><input disabled={busy} type="file" accept="image/*" capture="environment" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; if (localUrl.current) URL.revokeObjectURL(localUrl.current); localUrl.current = URL.createObjectURL(file); setSource(localUrl.current); setSourceKey(`upload:${file.name}:${file.size}:${file.lastModified}`); setReady(false); setNotice("새 사진을 골랐어요. 표현 방식을 정해 주세요."); }} /></label></div>
-    <section className="studio-playlist"><div><b>오늘의 플레이리스트</b><span>{recap?.items.length ?? 0}곡 · 시간순</span></div><ol>{recap?.items.map((item) => <li key={item.id}>{item.coverUrl ? <img src={item.coverUrl} alt="" /> : <Music2 />}<span><strong>{item.title}</strong><small>{item.artist}</small></span></li>)}</ol></section>
+    <section className="studio-playlist"><div><b>오늘의 플레이리스트</b><span>{recap?.items.length ?? 0}곡 · 시간순</span></div><ol>{recap?.items.map((item) => <li key={item.id}>{item.coverUrl ? <img src={`/api/spotify/cover?url=${encodeURIComponent(item.coverUrl)}`} alt="" /> : <Music2 />}<span><strong>{item.title}</strong><small>{item.artist}</small></span></li>)}</ol></section>
     {hasCache && !ready && !busy ? <button type="button" className="studio-restore" onClick={loadCached}><RotateCcw />이 사진의 저장된 결과 바로 불러오기</button> : null}
     <div className={`studio-canvas-wrap ${ready ? "ready" : ""}`}><canvas ref={canvasRef} />{!ready && source ? <img src={source} alt="선택한 원본" /> : null}{!source ? <div className="studio-placeholder"><Camera /><strong>위에서 사진을 먼저 선택해 주세요</strong></div> : null}{busy ? <div className="studio-progress"><LoaderCircle /><b>{progress}%</b><strong>{progress < 20 ? "앨범 커버 준비 중" : progress < 93 ? "사진의 명암을 따라 배치 중" : "결과 자동 저장 중"}</strong><span>다른 메뉴는 완성될 때까지 잠시 잠겨요</span><i><em style={{ width: `${progress}%` }} /></i></div> : null}{ready && !busy ? <span className="studio-finished"><Sparkles /> 자동 저장됨</span> : null}</div>
     <div className="studio-step compact"><b>02</b><div><strong>표현 방식</strong><small>‘사진 선명’을 추천해요</small></div></div>
-    <div className="studio-controls"><div><label>디테일</label><div className="studio-segments"><button type="button" disabled={busy} className={density === 48 ? "active" : ""} onClick={() => setDensity(48)}>빠르게 · 48</button><button type="button" disabled={busy} className={density === 72 ? "active" : ""} onClick={() => setDensity(72)}>정교하게 · 72</button></div></div><div><label>원본 강조</label><div className="studio-segments three">{([["photo","사진 선명"],["balanced","균형"],["album","앨범 강조"]] as const).map(([value,label]) => <button type="button" disabled={busy} aria-pressed={balance === value} className={balance === value ? "active" : ""} onClick={() => setBalance(value)} key={value}>{label}{balance === value ? <Check /> : null}</button>)}</div></div><label className="studio-switch"><span><strong>재생 빈도 반영</strong><small>자주 들은 앨범을 더 많이 사용해요</small></span><input disabled={busy} type="checkbox" checked={weighted} onChange={(event) => setWeighted(event.target.checked)} /></label></div>
+    <div className="studio-controls"><div><label>디테일</label><div className="studio-segments studio-density"><button type="button" disabled={busy} className={density === 48 ? "active" : ""} onClick={() => setDensity(48)}>빠르게 · 48</button><button type="button" disabled={busy} className={density === 72 ? "active" : ""} onClick={() => setDensity(72)}>정교하게 · 72</button><button type="button" disabled={busy} className={density === 96 ? "active" : ""} onClick={() => setDensity(96)}>아카이브 · 96</button></div></div><div><label>원본 강조</label><div className="studio-segments three">{([["photo","사진 선명"],["balanced","균형"],["album","앨범 강조"]] as const).map(([value,label]) => <button type="button" disabled={busy} aria-pressed={balance === value} className={balance === value ? "active" : ""} onClick={() => setBalance(value)} key={value}>{label}{balance === value ? <Check /> : null}</button>)}</div></div><label className="studio-switch"><span><strong>재생 빈도 반영</strong><small>자주 들은 앨범을 더 많이 사용해요</small></span><input disabled={busy} type="checkbox" checked={weighted} onChange={(event) => setWeighted(event.target.checked)} /></label></div>
     <p className="studio-privacy"><LockKeyhole /> 원본과 결과는 이 기기의 DAYTRACK 저장소에서만 처리돼요.</p>{notice ? <p className="studio-message" role="status">{notice}</p> : null}
     <button type="button" className="studio-generate" onClick={startGeneration} disabled={busy || !source || supplementalBusy}><Sparkles />{busy || supplementalBusy ? `${progress}% · 사진을 만드는 중` : ready ? "현재 설정으로 다시 만들기" : source ? "이 사진으로 모자이크 만들기" : "먼저 사진을 선택해 주세요"}</button>
     {ready && !busy ? <div className="studio-result-actions"><button type="button" onClick={exportImage}><Download />2048px 이미지 저장</button><button type="button" onClick={exportImage}><Share2 />공유</button></div> : null}

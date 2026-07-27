@@ -71,7 +71,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const source = [...featured, ...Array.from({ length: 96 }, (_, index) => ({ ...chronological[index % chronological.length], featured: false }))];
     const placed: Array<(typeof source)[number] & { x: number; y: number; span: number }> = [];
     source.forEach((album) => {
-      let span = album.featured && album.count >= 5 ? 4 : album.featured && album.count >= 2 ? 2 : 1;
+      let span = album.featured && album.count >= 4 ? 4 : album.featured && album.count >= 2 ? 2 : 1;
       let position: { x: number; y: number } | null = null;
       while (!position && span > 0) {
         for (let y = 0; y <= size - span && !position; y += 1) for (let x = 0; x <= size - span && !position; x += 1) {
